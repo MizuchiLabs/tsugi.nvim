@@ -33,17 +33,19 @@ function M.setup(opts)
     end,
   })
 
+  -- An open menu alone leaves the ghost up. Only a selected item, which blink or
+  -- the native menu previews in place, takes it down.
   vim.api.nvim_create_autocmd("User", {
     group = group,
-    pattern = { "BlinkCmpMenuOpen", "BlinkCmpMenuClose" },
+    pattern = { "BlinkCmpListSelect", "BlinkCmpHide" },
     callback = function(ev)
-      engine.hide(ev.match == "BlinkCmpMenuOpen")
+      engine.hide(ev.match == "BlinkCmpListSelect" and ev.data and ev.data.idx ~= nil)
     end,
   })
   vim.api.nvim_create_autocmd({ "CompleteChanged", "CompleteDone" }, {
     group = group,
     callback = function(ev)
-      engine.hide(ev.event == "CompleteChanged")
+      engine.hide(ev.event == "CompleteChanged" and not vim.tbl_isempty(vim.v.event.completed_item or {}))
     end,
   })
 

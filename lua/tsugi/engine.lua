@@ -129,6 +129,12 @@ local function remaining(s)
   return s.text:sub(#typed + 1), row, col
 end
 
+-- With the gate on, a late shaky token can still veto the whole text, so the
+-- ghost waits for the verdict instead of flashing and vanishing.
+local function showable(s)
+  return not hidden and (s.done or not config.confidence)
+end
+
 local function discard()
   if not active then
     return
@@ -149,7 +155,7 @@ local function render()
   if not rest then
     return discard()
   end
-  if hidden then
+  if not showable(active) then
     return ui.clear(active.buf)
   end
   ui.show(active.buf, row, col, rest)
@@ -316,7 +322,7 @@ end
 ---@param kind "all"|"word"|"line"
 ---@return boolean accepted
 function M.accept(kind)
-  if not active or hidden then
+  if not active or not showable(active) then
     return false
   end
   local rest, row, col = remaining(active)
@@ -361,7 +367,7 @@ function M.dismiss()
 end
 
 function M.visible()
-  if not active then
+  if not active or not showable(active) then
     return nil
   end
   local rest = remaining(active)

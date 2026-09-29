@@ -15,8 +15,9 @@ All of them are set in `keymaps`, e.g. `keymaps = { accept = "<Tab>" }`.
 `:Tsugi model sweep` and `:Tsugi context similar defs` switch at runtime,
 `:Tsugi stats` shows accept counts and latency.
 
-The ghost hides while a completion menu (blink or native) is open. To share
-`<Tab>` with blink, set `keymaps = { accept = false }` and put tsugi first in its chain:
+The ghost stays up while a completion menu (blink or native) is open and hides
+once an item in it is selected. To share `<Tab>` with blink, set
+`keymaps = { accept = false }` and put tsugi first in its chain:
 
 ```lua
 ["<Tab>"] = { function() return require("tsugi").accept() end, "select_next", "snippet_forward", "fallback" },

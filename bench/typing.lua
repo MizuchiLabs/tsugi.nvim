@@ -61,7 +61,9 @@ local chan = vim.fn.jobstart({ "nvim", "--embed", "--headless", "--clean", "-n" 
 local function lua(code, ...)
   return vim.rpcrequest(chan, "nvim_exec_lua", code, { ... })
 end
+local keys_at = {}
 local function input(keys)
+  keys_at[#keys_at + 1] = now()
   vim.rpcrequest(chan, "nvim_input", keys)
 end
 
@@ -108,6 +110,7 @@ local total = {
   good = 0,
   wrong = 0,
   hides = 0,
+  flickers = 0,
   requests = 0,
   prefetches = 0,
   cancels = 0,
@@ -149,6 +152,7 @@ for i = 1, math.min(tonumber(opts.funcs), #set.picked) do
     fn.first
   )
   input("A")
+  keys_at = {}
 
   local truth = "\n" .. table.concat(lines, "\n", fn.first + 1, fn.last - 1)
   local pos, seen_at, last_wrong, chained = 1, nil, nil, false
@@ -225,7 +229,7 @@ for i = 1, math.min(tonumber(opts.funcs), #set.picked) do
   end
 
   local log = lua("return _G.log")
-  local shown, req_t = false, {}
+  local shown, req_t, shown_at, k = false, {}, 0, 1
   for _, e in ipairs(log) do
     if e.ev == "request" then
       if e.purpose == "user" then
@@ -243,8 +247,18 @@ for i = 1, math.min(tonumber(opts.funcs), #set.picked) do
     elseif e.ev == "show" and e.purpose == "user" then
       total.show_ms[#total.show_ms + 1] = e.ms
     elseif e.ev == "ui" then
+      while keys_at[k] and keys_at[k] < e.t do
+        k = k + 1
+      end
       if shown and e.text == "" then
         total.hides = total.hides + 1
+        -- Gone without a keystroke since it last changed: the user saw it flicker.
+        if not (keys_at[k - 1] and keys_at[k - 1] > shown_at) then
+          total.flickers = total.flickers + 1
+        end
+      end
+      if e.text ~= "" then
+        shown_at = e.t
       end
       shown = e.text ~= ""
     end
@@ -297,13 +311,14 @@ io.write(
   )
 )
 io.write(
-  ("time to ghost p50 %.0fms p90 %.0fms | per 100 chars: %.1f requests, %.1f prefetches, %.1f cancels, %.1f hides | %d cache hits, %d adopted prefetches | %d mismatches | %.0fs\n"):format(
+  ("time to ghost p50 %.0fms p90 %.0fms | per 100 chars: %.1f requests, %.1f prefetches, %.1f cancels, %.1f hides, %.1f flickers | %d cache hits, %d adopted prefetches | %d mismatches | %.0fs\n"):format(
     lib.percentile(total.show_ms, 0.5),
     lib.percentile(total.show_ms, 0.9),
     per100(total.requests),
     per100(total.prefetches),
     per100(total.cancels),
     per100(total.hides),
+    per100(total.flickers),
     total.hits,
     total.adopts,
     total.mismatch,

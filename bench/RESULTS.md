@@ -46,14 +46,38 @@ differences under ~5 points as noise.
 | svelte | -0.1 | 55% | 7% |
 | svelte | off | 61% | 18% |
 
-Time to ghost p50 58 to 70ms. No mismatches: every retyped function came out
+Time to ghost p50 58 to 70ms back then, but that counted ghosts the gate later
+wiped (see below). No mismatches: every retyped function came out
 byte-identical. Word accepts carry a lot: most ghosts are right until a literal
 (a URL, a message string) and word-accept takes the right part.
 
+## Flicker fix: the ghost waits for the gate's verdict
+
+The gate judges the mean logprob of the whole kept text, but the ghost used to
+stream in token by token. A late shaky token then wiped a ghost the user had
+already seen. The typing sim now counts flickers: a ghost that disappears with
+no keystroke since it last changed.
+
+| suite | ghost shown | keystrokes saved | hides / 100 chars | flickers / 100 chars | time to ghost p50 / p90 |
+|---|---|---|---|---|---|
+| go | while streaming | 67% | 12.4 | 9.4 | 59 / 71ms |
+| go | after verdict | 67% | 2.7 | 0.0 | 126 / 229ms |
+| svelte | after verdict | 54% | 4.9 | 0.0 | 123 / 273ms |
+
+Same savings, no flicker, but the first ghost now costs the whole generation
+(~8ms per token at 130 tok/s). Also, blink opens its menu on almost every
+identifier char, and the ghost used to hide whenever the menu was open. It now
+hides only once a menu item is selected.
+
 ## Open problems and next steps
 
-- Ghost hides: about 12 per 100 typed chars with the gate on. Some of that is
-  flicker worth fixing. The typing sim counts it.
+- Time to ghost is ~125ms p50 now that the ghost waits for the full text. Most
+  of it is decoding. N-gram speculative decoding on the server (no draft model,
+  code repeats a lot) is the obvious lever. It is a server flag, not settable
+  per request on b11223.
+- A line-prefix gate (keep the longest run of whole lines whose mean passes)
+  would let multi-line blocks show their first line early without ever
+  retracting it. Needs per-line confidence in the replay logs to judge.
 - Next-edit lane with sweep (`format.nes.sweep` exists, bench/run.lua covers
   it). Cancel the stream once the output rejoins the original, which was
   lossless for single edits and cut latency to ~250 to 800ms.
