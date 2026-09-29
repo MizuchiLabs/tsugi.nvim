@@ -1,0 +1,42 @@
+---@class tsugi.Model
+---@field id string model name sent to llama-server (router mode picks by it)
+---@field fim? "mellum"|"qwen" prompt format for inline completion
+
+---@class tsugi.Config
+local defaults = {
+  url = "http://127.0.0.1:8080",
+  model = "sweep",
+  ---@type table<string, tsugi.Model>
+  models = {
+    mellum = { id = "mellum-4b-dpo-all.Q8_0", fim = "mellum" },
+    sweep = { id = "sweep-next-edit-v2-7B-Q5_K_M", fim = "qwen" },
+  },
+  ---Strategies from tsugi.context, combined in order: "none", "recent", "similar", "defs".
+  context = { "defs" },
+  ---"block": one statement, or the whole block it opens. A number: up to that many lines.
+  lines = "block",
+  ---Minimum mean token logprob to show a ghost. false shows everything.
+  confidence = -0.1,
+  debounce = 20,
+  prefetch = true,
+  ---Set a key to false to leave it unmapped. With nothing to accept, the key does
+  ---what it normally does, except Alt keys, which terminals send as Esc+key.
+  keymaps = {
+    accept = "<M-f>",
+    accept_word = "<C-Right>",
+    accept_line = "<C-l>",
+    dismiss = "<C-]>",
+  },
+}
+
+local M = vim.deepcopy(defaults)
+
+---@param opts? table
+function M.setup(opts)
+  local merged = vim.tbl_deep_extend("force", vim.deepcopy(defaults), opts or {})
+  for k, v in pairs(merged) do
+    M[k] = v
+  end
+end
+
+return M
