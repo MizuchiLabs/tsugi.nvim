@@ -12,6 +12,8 @@ function M.record(name, data)
     if #show_ms > 500 then
       table.remove(show_ms, 1)
     end
+  elseif name == "done" and data.gated then
+    counts.gated = (counts.gated or 0) + 1
   elseif name == "accept" then
     accepted = accepted + data.chars
   end
@@ -30,15 +32,20 @@ function M.report()
   local c = function(k)
     return counts[k] or 0
   end
-  local shown = c("show:user") + c("show:prefetch") + c("hit")
+  local shown = c "show:user" + c "show:prefetch" + c "hit"
   return table.concat({
-    ("requests %d, prefetches %d, cancelled %d"):format(c("request:user"), c("request:prefetch"), c("cancel:user")),
+    ("requests %d, prefetches %d, cancelled %d, dropped by confidence gate %d"):format(
+      c "request:user",
+      c "request:prefetch",
+      c "cancel:user",
+      c "gated"
+    ),
     ("ghosts shown %d, accepted %d (%d chars), cache hits %d, prefetch adopted %d"):format(
       shown,
-      c("accept"),
+      c "accept",
       accepted,
-      c("hit"),
-      c("adopt")
+      c "hit",
+      c "adopt"
     ),
     ("time to ghost p50 %.0fms, p90 %.0fms"):format(pct(show_ms, 0.5), pct(show_ms, 0.9)),
   }, "\n")
