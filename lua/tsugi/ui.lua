@@ -1,6 +1,6 @@
 local M = {}
 
-local ns = vim.api.nvim_create_namespace("tsugi")
+local ns = vim.api.nvim_create_namespace "tsugi"
 vim.api.nvim_set_hl(0, "TsugiGhost", { link = "Comment", default = true })
 
 local function expand(s, buf)

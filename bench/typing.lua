@@ -7,7 +7,7 @@
 --   [--context defs] [--wpm 100] [--reaction 250] [--seed 1] [--debounce 20] [--lines block|N] [--confidence -0.1|off]
 local lib = dofile(vim.fs.dirname(vim.fs.abspath(arg[0])) .. "/lib.lua")
 
-local opts = lib.args({
+local opts = lib.args {
   suite = "go",
   funcs = "3",
   model = "sweep",
@@ -20,7 +20,7 @@ local opts = lib.args({
   lines = "block",
   confidence = "-0.1",
   verbose = "false",
-})
+}
 
 local function now()
   return vim.uv.hrtime() / 1e6
@@ -151,7 +151,7 @@ for i = 1, math.min(tonumber(opts.funcs), #set.picked) do
     virtual,
     fn.first
   )
-  input("A")
+  input "A"
   keys_at = {}
 
   local truth = "\n" .. table.concat(lines, "\n", fn.first + 1, fn.last - 1)
@@ -160,14 +160,14 @@ for i = 1, math.min(tonumber(opts.funcs), #set.picked) do
   local stats = { typed = 0, accepted = 0, accepts = 0 }
 
   while pos <= #truth do
-    local vis = lua("return require('tsugi.engine').visible()")
+    local vis = lua "return require('tsugi.engine').visible()"
     if vis == vim.NIL then
       vis = nil
     end
     local rest = truth:sub(pos)
     local good = vis and vim.startswith(rest, vis)
-    local first = vis and vis:match("^[^\n]+")
-    local word = vis and (vis:match("^%s*[%w_]+") or vis:match("^%s*[^%w_%s]+"))
+    local first = vis and vis:match "^[^\n]+"
+    local word = vis and (vis:match "^%s*[%w_]+" or vis:match "^%s*[^%w_%s]+")
     local action
     if good then
       action = { key = "<M-f>", take = vis, kind = "all" }
@@ -220,7 +220,7 @@ for i = 1, math.min(tonumber(opts.funcs), #set.picked) do
   end
   vim.wait(50)
 
-  local got = lua("vim.cmd('stopinsert') return vim.api.nvim_buf_get_lines(0, 0, -1, false)")
+  local got = lua "vim.cmd('stopinsert') return vim.api.nvim_buf_get_lines(0, 0, -1, false)"
   local ok = table.concat(got, "\n") == table.concat(lines, "\n")
   if not ok then
     total.mismatch = total.mismatch + 1
@@ -228,7 +228,7 @@ for i = 1, math.min(tonumber(opts.funcs), #set.picked) do
     io.write(("MISMATCH %s:%d\n%s\n"):format(fn.file, fn.first, diff))
   end
 
-  local log = lua("return _G.log")
+  local log = lua "return _G.log"
   local shown, req_t, shown_at, k = false, {}, 0, 1
   for _, e in ipairs(log) do
     if e.ev == "request" then

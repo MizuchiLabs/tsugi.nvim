@@ -2,10 +2,10 @@
 local root = vim.fs.dirname(vim.fs.dirname(vim.fs.abspath(arg[0])))
 package.path = root .. "/lua/?.lua;" .. root .. "/lua/?/init.lua;" .. package.path
 
-local http = require("tsugi.http")
-local format = require("tsugi.format")
+local http = require "tsugi.http"
+local format = require "tsugi.format"
 
-local URL = os.getenv("TSUGI_URL") or "http://127.0.0.1:8080"
+local URL = os.getenv "TSUGI_URL" or "http://127.0.0.1:8080"
 local case_filter, strategy_filter = arg[1], arg[2]
 
 local strategies = {
@@ -26,7 +26,7 @@ local function parse_case(c)
   local before = text:sub(1, s - 1)
   text = before .. text:sub(s + #"█")
   local row = select(2, before:gsub("\n", "")) + 1
-  local col = #before - (before:match(".*\n()") or 1) + 1
+  local col = #before - (before:match ".*\n()" or 1) + 1
   return { path = c.path, lines = vim.split(text, "\n"), row = row, col = col, history = c.history or {} }
 end
 
@@ -120,7 +120,7 @@ local function show(out)
     return "  │ " .. out.text:gsub("\n", "\n  │ ")
   end
   local text = out.text:gsub("^" .. vim.pesc(req.strip or ""), "")
-  if text:find("^<|marker_1|>") then
+  if text:find "^<|marker_1|>" then
     return "  (no edit)"
   end
   text = (req.prefill or "") .. text:gsub("\n?<|marker_%d+|>.*$", ""):gsub("<|user_cursor|>", ""):gsub("\n$", "")

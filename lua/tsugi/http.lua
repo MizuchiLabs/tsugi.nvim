@@ -31,7 +31,7 @@ function M.stream(url, body, on_chunk, on_exit)
         if not nl then
           break
         end
-        local payload = pending:sub(1, nl - 1):match("^data: (.+)")
+        local payload = pending:sub(1, nl - 1):match "^data: (.+)"
         pending = pending:sub(nl + 1)
         if payload then
           local ok, msg = pcall(vim.json.decode, payload)

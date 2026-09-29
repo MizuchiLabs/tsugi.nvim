@@ -1,7 +1,7 @@
 local M = {}
 
 M.root = vim.fs.dirname(vim.fs.dirname(vim.fs.abspath(arg[0])))
-M.url = os.getenv("TSUGI_URL") or "http://127.0.0.1:8080"
+M.url = os.getenv "TSUGI_URL" or "http://127.0.0.1:8080"
 
 ---Parses `--key value` pairs over the given defaults.
 function M.args(defaults)
@@ -49,8 +49,8 @@ end
 local function find_funcs(file, lines)
   local out = {}
   for i, l in ipairs(lines) do
-    if is_start(l) and (l:match("[{(]%s*$") or l:match("function.*%)%s*$")) then
-      local indent = l:match("^%s*")
+    if is_start(l) and (l:match "[{(]%s*$" or l:match "function.*%)%s*$") then
+      local indent = l:match "^%s*"
       for j = i + 1, math.min(#lines, i + 60) do
         local e = lines[j]
         if e:match("^" .. indent .. "[})]") or e:match("^" .. indent .. "end") then
@@ -59,7 +59,7 @@ local function find_funcs(file, lines)
           end
           break
         end
-        if indent == "" and e:match("^%S") and not e:match("^[})]") then
+        if indent == "" and e:match "^%S" and not e:match "^[})]" then
           break
         end
       end
@@ -69,7 +69,7 @@ local function find_funcs(file, lines)
 end
 
 local function indent(s)
-  return #s:match("^%s*")
+  return #s:match "^%s*"
 end
 
 ---Indented blocks of 5 to 30 lines, for markup and config: the opening line at
@@ -78,9 +78,9 @@ local function find_blocks(file, lines)
   local out = {}
   for i, l in ipairs(lines) do
     local nxt = lines[i + 1]
-    if l:match("%S") and nxt and nxt:match("%S") and indent(nxt) > indent(l) then
+    if l:match "%S" and nxt and nxt:match "%S" and indent(nxt) > indent(l) then
       for j = i + 1, math.min(#lines, i + 40) do
-        if lines[j]:match("%S") and indent(lines[j]) <= indent(l) then
+        if lines[j]:match "%S" and indent(lines[j]) <= indent(l) then
           if j - i >= 5 and j - i <= 30 then
             out[#out + 1] = { file = file, first = i, last = j }
           end

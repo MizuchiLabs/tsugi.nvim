@@ -1,6 +1,6 @@
-local format = require("tsugi.format")
-local http = require("tsugi.http")
-local trim = require("tsugi.trim")
+local format = require "tsugi.format"
+local http = require "tsugi.http"
+local trim = require "tsugi.trim"
 
 local M = {}
 
@@ -38,7 +38,7 @@ end
 function M.fim(url, model, ctx, limit, cb)
   local req = format.fim[model.fim](ctx)
   local stop = vim.list_extend({}, req.stop)
-  if ctx.lines[ctx.row]:sub(ctx.col + 1):match("%S") then
+  if ctx.lines[ctx.row]:sub(ctx.col + 1):match "%S" then
     stop[#stop + 1] = "\n"
   end
 

@@ -1,15 +1,15 @@
 local M = {}
 
 local function indent(s)
-  return #s:match("^%s*")
+  return #s:match "^%s*"
 end
 
 local function blank(s)
-  return s:match("^%s*$") ~= nil
+  return s:match "^%s*$" ~= nil
 end
 
 local function opens(s)
-  return s:match("[{(%[]%s*$") ~= nil
+  return s:match "[{(%[]%s*$" ~= nil
 end
 
 ---Cuts raw (possibly still streaming) FIM output down to what is worth showing.
@@ -47,7 +47,7 @@ function M.fim(raw, lines, row, col, final, limit)
   local next_line
   for i = row + 1, #lines do
     if not blank(lines[i]) then
-      if lines[i]:match("%w") then
+      if lines[i]:match "%w" then
         next_line = lines[i]:gsub("%s+$", "")
       end
       break
@@ -84,7 +84,7 @@ function M.fim(raw, lines, row, col, final, limit)
         if not opens(l) then
           return cut()
         end
-      elseif ind == head and l:match("^%s*[})%]]") then
+      elseif ind == head and l:match "^%s*[})%]]" then
         return cut()
       end
     end

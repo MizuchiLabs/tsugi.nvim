@@ -10,9 +10,9 @@ end
 
 ---@param opts? table see tsugi.config
 function M.setup(opts)
-  local config = require("tsugi.config")
-  local context = require("tsugi.context")
-  local engine = require("tsugi.engine")
+  local config = require "tsugi.config"
+  local context = require "tsugi.context"
+  local engine = require "tsugi.engine"
   config.setup(opts)
 
   local group = vim.api.nvim_create_augroup("tsugi", { clear = true })
@@ -53,7 +53,7 @@ function M.setup(opts)
     if not lhs or lhs == "" then
       return
     end
-    local alt = lhs:match("^<[MA]%-") ~= nil
+    local alt = lhs:match "^<[MA]%-" ~= nil
     vim.keymap.set("i", lhs, function()
       if not engine.accept(kind) and not alt then
         vim.api.nvim_feedkeys(vim.keycode(lhs), "n", false)
@@ -84,7 +84,7 @@ function M.setup(opts)
     nargs = "*",
     complete = function(_, line)
       local words = vim.split(line, "%s+", { trimempty = true })
-      if #words <= 2 and not line:match("%s%S+%s") then
+      if #words <= 2 and not line:match "%s%S+%s" then
         return { "model", "context", "stats" }
       end
       if words[2] == "model" then

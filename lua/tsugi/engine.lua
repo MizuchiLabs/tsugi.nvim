@@ -1,8 +1,8 @@
-local config = require("tsugi.config")
-local context = require("tsugi.context")
-local complete = require("tsugi.complete")
-local stats = require("tsugi.stats")
-local ui = require("tsugi.ui")
+local config = require "tsugi.config"
+local context = require "tsugi.context"
+local complete = require "tsugi.complete"
+local stats = require "tsugi.stats"
+local ui = require "tsugi.ui"
 
 local M = {}
 
@@ -206,18 +206,29 @@ local function on_update(s, text, done, info)
   end
   s.ttft = info.ttft
   local conf = info.confidence
-  if config.confidence and conf and conf.mean < config.confidence then
+  local gated = config.confidence and conf and conf.mean < config.confidence or false
+  local raw = text
+  if gated then
     text = ""
   end
   -- While streaming, only whole lines grow the ghost so it never ends mid-word.
-  s.text = done and text or (text:match("^(.*)\n") or text)
+  s.text = done and text or (text:match "^(.*)\n" or text)
   if done then
     s.done = true
     if info.error then
       emit("error", { message = info.error })
     else
       remember(s.key, text)
-      emit("done", { purpose = s.purpose, ms = now() - s.t0, ttft = s.ttft, text = text, timings = info.timings })
+      emit("done", {
+        purpose = s.purpose,
+        ms = now() - s.t0,
+        ttft = s.ttft,
+        text = text,
+        raw = raw,
+        conf = conf and conf.mean,
+        gated = gated,
+        timings = info.timings,
+      })
     end
   end
   if s == active then
@@ -285,7 +296,7 @@ function M.on_change()
       purpose = "cache",
       t0 = now(),
     }
-    emit("hit")
+    emit "hit"
     render()
     maybe_prefetch()
     return
@@ -294,7 +305,7 @@ function M.on_change()
   if prefetch then
     if prefetch.key == key and not prefetch.done then
       active, prefetch = prefetch, nil
-      emit("adopt")
+      emit "adopt"
       return render()
     end
     if not prefetch.done then
@@ -331,9 +342,9 @@ function M.accept(kind)
   end
   local take = rest
   if kind == "word" then
-    take = rest:match("^%s*[%w_]+") or rest:match("^%s*[^%w_%s]+") or rest
+    take = rest:match "^%s*[%w_]+" or rest:match "^%s*[^%w_%s]+" or rest
   elseif kind == "line" then
-    take = rest:match("^\n?[^\n]*")
+    take = rest:match "^\n?[^\n]*"
   end
   local buf = active.buf
   local lines = vim.split(take, "\n", { plain = true })

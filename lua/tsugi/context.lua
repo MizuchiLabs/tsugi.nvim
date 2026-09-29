@@ -49,14 +49,14 @@ and break case catch chan class const continue def default defer else elif end e
 false for from func function if import in interface local map nil not null
 package pass range return select self string struct switch then this true try type
 var void while with async await let new int bool byte error any
-]]):gmatch("%S+")
+]]):gmatch "%S+"
 do
   stopwords[w] = true
 end
 
 local function idents(text, into)
   into = into or {}
-  for w in text:gmatch("[%a_][%w_]*") do
+  for w in text:gmatch "[%a_][%w_]*" do
     if #w >= 3 and not stopwords[w] then
       into[w] = (into[w] or 0) + 1
     end
@@ -222,12 +222,12 @@ local function defs_of(buf)
 end
 
 local function def_snippet(lines, at)
-  local indent = lines[at]:match("^%s*")
-  local opens = lines[at]:match("[{(%[]%s*$") or lines[at]:match("function") or lines[at]:match(":%s*$")
+  local indent = lines[at]:match "^%s*"
+  local opens = lines[at]:match "[{(%[]%s*$" or lines[at]:match "function" or lines[at]:match ":%s*$"
   local last = at
   for i = at + 1, math.min(#lines, at + 24) do
     local l = lines[i]
-    if not opens and l:match("^%s*$") then
+    if not opens and l:match "^%s*$" then
       break
     end
     last = i

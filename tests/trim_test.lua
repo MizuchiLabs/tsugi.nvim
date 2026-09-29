@@ -1,4 +1,4 @@
-local trim = require("tsugi.trim")
+local trim = require "tsugi.trim"
 
 local function eq(want, got)
   if want ~= got then

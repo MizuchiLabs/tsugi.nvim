@@ -11,12 +11,12 @@
 local lib = dofile(vim.fs.dirname(vim.fs.abspath(arg[0])) .. "/lib.lua")
 vim.opt.rtp:prepend(lib.root)
 
-local complete = require("tsugi.complete")
-local config = require("tsugi.config")
-local context = require("tsugi.context")
+local complete = require "tsugi.complete"
+local config = require "tsugi.config"
+local context = require "tsugi.context"
 
 local opts =
-  lib.args({ model = "mellum,sweep", context = "none,defs,similar,recent", points = "8", seed = "1", lines = "block" })
+  lib.args { model = "mellum,sweep", context = "none,defs,similar,recent", points = "8", seed = "1", lines = "block" }
 local limit = tonumber(opts.lines) or opts.lines
 
 ---Points spread over the function body: line starts and a mid-line spot.
@@ -24,7 +24,7 @@ local function points_of(lines, fn, max)
   local all = {}
   for r = fn.first + 1, fn.last - 1 do
     local l = lines[r]
-    local indent = #l:match("^%s*")
+    local indent = #l:match "^%s*"
     if #l - indent >= 4 then
       all[#all + 1] = { row = r, col = indent }
       local mid = l:find("[%s(.=:,]", indent + math.floor((#l - indent) / 3))
@@ -44,7 +44,7 @@ local function points_of(lines, fn, max)
 end
 
 local function word_snap(s, n)
-  while n > 0 and s:sub(n + 1, n + 1):match("[%w_]") and s:sub(n, n):match("[%w_]") do
+  while n > 0 and s:sub(n + 1, n + 1):match "[%w_]" and s:sub(n, n):match "[%w_]" do
     n = n - 1
   end
   return n
@@ -168,7 +168,7 @@ for _, suite in ipairs(lib.suites(lib.list(opts.suite))) do
             end
           end
           log:write(
-            vim.json.encode({
+            vim.json.encode {
               file = fn.file,
               row = pt.row,
               col = pt.col,
@@ -179,7 +179,7 @@ for _, suite in ipairs(lib.suites(lib.list(opts.suite))) do
               got = r.text,
               want = truth:sub(1, 300),
               error = r.info.error,
-            }),
+            },
             "\n"
           )
         end
