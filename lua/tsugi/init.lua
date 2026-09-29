@@ -8,6 +8,48 @@ function M.accept(kind)
   return require("tsugi.engine").accept(kind or "all")
 end
 
+---Switches to another entry of `models` and loads it on the server right away,
+---so the first suggestion doesn't wait for a cold start. Without a name it
+---opens a picker.
+---@param name? string
+function M.use_model(name)
+  local config = require "tsugi.config"
+  if not name then
+    local names = vim.tbl_keys(config.models)
+    table.sort(names)
+    vim.ui.select(names, {
+      prompt = "tsugi model",
+      format_item = function(n)
+        return ("%s%s  %s"):format(n == config.model and "* " or "  ", n, config.models[n].id)
+      end,
+    }, function(choice)
+      if choice then
+        M.use_model(choice)
+      end
+    end)
+    return
+  end
+  local model = config.models[name]
+  if not model then
+    return vim.notify("tsugi: unknown model " .. name, vim.log.levels.WARN)
+  end
+  config.model = name
+  require("tsugi.engine").reset()
+  vim.system({
+    "curl",
+    "-sf",
+    config.url .. "/completion",
+    "-H",
+    "content-type: application/json",
+    "-d",
+    vim.json.encode { model = model.id, prompt = "\n", n_predict = 1 },
+  }, {}, function(res)
+    vim.schedule(function()
+      vim.notify(("tsugi: %s %s"):format(name, res.code == 0 and "ready" or "failed to load"))
+    end)
+  end)
+end
+
 ---@param opts? table see tsugi.config
 function M.setup(opts)
   local config = require "tsugi.config"
@@ -39,7 +81,7 @@ function M.setup(opts)
     group = group,
     pattern = { "BlinkCmpListSelect", "BlinkCmpHide" },
     callback = function(ev)
-      engine.hide(ev.match == "BlinkCmpListSelect" and ev.data and ev.data.idx ~= nil)
+      engine.hide(ev.match == "BlinkCmpListSelect" and (ev.data or {}).idx ~= nil)
     end,
   })
   vim.api.nvim_create_autocmd({ "CompleteChanged", "CompleteDone" }, {
@@ -69,9 +111,8 @@ function M.setup(opts)
 
   vim.api.nvim_create_user_command("Tsugi", function(cmd)
     local sub, rest = cmd.fargs[1], vim.list_slice(cmd.fargs, 2)
-    if sub == "model" and config.models[rest[1]] then
-      config.model = rest[1]
-      engine.reset()
+    if sub == "model" then
+      M.use_model(rest[1])
     elseif sub == "context" and #rest > 0 then
       config.context = rest
       engine.reset()

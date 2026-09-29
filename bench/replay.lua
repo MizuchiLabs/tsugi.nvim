@@ -7,17 +7,29 @@
 -- when ok, word-wise up to the first mistake otherwise).
 --
 -- nvim -l bench/replay.lua [--suite go,lua] [--model mellum,sweep]
---   [--context none,defs,similar,recent,defs+recent] [--points 8] [--seed 1] [--lines block|N]
+--   [--context none,defs,similar,recent,defs+recent] [--points 8] [--seed 1] [--lines block|N] [--suffix N]
 local lib = dofile(vim.fs.dirname(vim.fs.abspath(arg[0])) .. "/lib.lua")
 vim.opt.rtp:prepend(lib.root)
 
 local complete = require "tsugi.complete"
 local config = require "tsugi.config"
 local context = require "tsugi.context"
+local format = require "tsugi.format"
 
-local opts =
-  lib.args { model = "mellum,sweep", context = "none,defs,similar,recent", points = "8", seed = "1", lines = "block" }
+local opts = lib.args {
+  model = "mellum,sweep",
+  context = "none,defs,similar,recent",
+  points = "8",
+  seed = "1",
+  lines = "block",
+  suffix = "",
+}
 local limit = tonumber(opts.lines) or opts.lines
+if opts.suffix ~= "" then
+  for name in pairs(format.suffix) do
+    format.suffix[name] = tonumber(opts.suffix)
+  end
+end
 
 ---Points spread over the function body: line starts and a mid-line spot.
 local function points_of(lines, fn, max)
@@ -67,7 +79,7 @@ local function score(truth, got)
   return { kind = "wrong", saved = word_snap(got, n), line_ok = line_ok }
 end
 
-local function run_point(model, names, limit, buf, path, lines, pt)
+local function run_point(model, names, buf, path, lines, pt)
   local first, last = context.window(pt.row, #lines, 120, 40)
   local ctx = {
     path = path,
@@ -153,7 +165,7 @@ for _, suite in ipairs(lib.suites(lib.list(opts.suite))) do
             truth = truth .. "\n" .. table.concat(lines, "\n", pt.row + 1, fn.last - 1)
           end
 
-          local r = run_point(model, names, limit, buf, fn.file, virtual, pt)
+          local r = run_point(model, names, buf, fn.file, virtual, pt)
           local s = score(truth, r.text)
           stats.n = stats.n + 1
           stats.ms[#stats.ms + 1] = r.ms

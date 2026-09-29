@@ -124,7 +124,7 @@ local function show(out)
     return "  (no edit)"
   end
   text = (req.prefill or "") .. text:gsub("\n?<|marker_%d+|>.*$", ""):gsub("<|user_cursor|>", ""):gsub("\n$", "")
-  local diff = vim.text.diff(table.concat(out.old, "\n") .. "\n", text .. "\n", { ctxlen = 0 })
+  local diff = vim.text.diff(table.concat(out.old, "\n") .. "\n", text .. "\n", { ctxlen = 0 }) --[[@as string]]
   if diff == "" then
     return "  (no edit)"
   end

@@ -27,6 +27,9 @@
 
 local M = { fim = {}, nes = {} }
 
+---Lines below the cursor line that go into a FIM prompt, per format.
+M.suffix = { mellum = 64, qwen = 12, seed = 64 }
+
 local function join(lines, first, last)
   return table.concat(lines, "\n", math.max(first, 1), math.min(last, #lines))
 end
@@ -60,7 +63,7 @@ end
 ---@param ctx tsugi.Context
 ---@return tsugi.Request
 function M.fim.mellum(ctx)
-  local prefix, suffix = split_at_cursor(ctx, 64)
+  local prefix, suffix = split_at_cursor(ctx, M.suffix.mellum)
   return {
     prompt = chunk_blocks(ctx.chunks, "<filename>")
       .. "<filename>"
@@ -75,11 +78,29 @@ function M.fim.mellum(ctx)
   }
 end
 
+---Seed-Coder: SPM. The model card defines no file or repo tokens, so other
+---files go first as plain text under their path.
+---@param ctx tsugi.Context
+---@return tsugi.Request
+function M.fim.seed(ctx)
+  local prefix, suffix = split_at_cursor(ctx, M.suffix.seed)
+  return {
+    prompt = chunk_blocks(ctx.chunks, "")
+      .. "<[fim-suffix]>"
+      .. suffix
+      .. "<[fim-prefix]>"
+      .. prefix
+      .. "<[fim-middle]>",
+    stop = { "<[fim-suffix]>", "<[fim-prefix]>", "<[fim-middle]>" },
+    n_predict = 128,
+  }
+end
+
 ---Qwen2.5-Coder PSM with repo-level file separators. sweep-next-edit inherits it.
 ---@param ctx tsugi.Context
 ---@return tsugi.Request
 function M.fim.qwen(ctx)
-  local prefix, suffix = split_at_cursor(ctx, 20)
+  local prefix, suffix = split_at_cursor(ctx, M.suffix.qwen)
   return {
     prompt = chunk_blocks(ctx.chunks, "<|file_sep|>")
       .. "<|file_sep|>"

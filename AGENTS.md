@@ -69,6 +69,8 @@ tests/          unit tests, run with nvim -l tests/run.lua
 - `nvim -l tests/run.lua` must pass. Test behaviour through small generic
   examples, like the existing trim tests.
 - Format with `stylua lua bench tests`.
+- `lua-language-server --check .` must report no problems. It needs
+  `VIMRUNTIME` set, see the README.
 - Benches read the server from `TSUGI_URL`. It is the maintainer's home
   server (a llama.cpp router with one slot). Never commit its address.
 - Never run two benches at once, or a bench while loading another model. They

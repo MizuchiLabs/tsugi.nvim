@@ -41,7 +41,18 @@ local function now()
   return vim.uv.hrtime() / 1e6
 end
 require("tsugi.engine").on_event = function(ev, data)
-  table.insert(_G.log, { t = now(), ev = ev, purpose = data.purpose, ms = data.ms })
+  local tm = data.timings or {}
+  table.insert(_G.log, {
+    t = now(),
+    ev = ev,
+    purpose = data.purpose,
+    ms = data.ms,
+    ttft = data.ttft,
+    prompt_n = tm.prompt_n,
+    prompt_ms = tm.prompt_ms,
+    gen_n = tm.predicted_n,
+    gen_ms = tm.predicted_ms,
+  })
 end
 local ui = require("tsugi.ui")
 local show, clear = ui.show, ui.clear
@@ -58,6 +69,7 @@ end
 local suite = lib.suites({ opts.suite })[1]
 local set = lib.load(suite, tonumber(opts.seed))
 local chan = vim.fn.jobstart({ "nvim", "--embed", "--headless", "--clean", "-n" }, { rpc = true, cwd = set.repo })
+---@return any
 local function lua(code, ...)
   return vim.rpcrequest(chan, "nvim_exec_lua", code, { ... })
 end
@@ -118,6 +130,7 @@ local total = {
   adopts = 0,
   mismatch = 0,
   show_ms = {},
+  done = {},
   secs = 0,
 }
 
@@ -132,7 +145,7 @@ local function key_for(c)
   return c
 end
 
-for i = 1, math.min(tonumber(opts.funcs), #set.picked) do
+for i = 1, math.min(assert(tonumber(opts.funcs)), #set.picked) do
   local fn = set.picked[i]
   local lines = set.contents[fn.file]
   local virtual = vim.list_slice(lines, 1, fn.first)
@@ -244,6 +257,8 @@ for i = 1, math.min(tonumber(opts.funcs), #set.picked) do
       total.hits = total.hits + 1
     elseif e.ev == "adopt" then
       total.adopts = total.adopts + 1
+    elseif e.ev == "done" and e.purpose == "user" and e.prompt_ms then
+      table.insert(total.done, e)
     elseif e.ev == "show" and e.purpose == "user" then
       total.show_ms[#total.show_ms + 1] = e.ms
     elseif e.ev == "ui" then
@@ -323,5 +338,22 @@ io.write(
     total.adopts,
     total.mismatch,
     total.secs
+  )
+)
+
+local function col(key)
+  local xs = {}
+  for _, e in ipairs(total.done) do
+    xs[#xs + 1] = e[key]
+  end
+  return xs
+end
+io.write(
+  ("server, user requests that ran to the end: p50 %.0fms ttft, prompt %.0f tokens in %.0fms, %.0f tokens generated in %.0fms\n"):format(
+    lib.percentile(col "ttft", 0.5),
+    lib.percentile(col "prompt_n", 0.5),
+    lib.percentile(col "prompt_ms", 0.5),
+    lib.percentile(col "gen_n", 0.5),
+    lib.percentile(col "gen_ms", 0.5)
   )
 )

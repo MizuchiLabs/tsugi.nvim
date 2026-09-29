@@ -102,7 +102,7 @@ end
 ---Text still to be shown, given what was typed since the suggestion started.
 ---Returns nil when the buffer no longer agrees with the suggestion.
 ---@param s tsugi.Suggestion
----@return string? rest, integer? row, integer? col
+---@return string?
 local function remaining(s)
   if vim.api.nvim_get_current_buf() ~= s.buf then
     return nil
@@ -119,14 +119,14 @@ local function remaining(s)
   local typed = table.concat(vim.api.nvim_buf_get_text(s.buf, s.row - 1, s.col, row - 1, col, {}), "\n")
   if #typed > #s.text then
     if not s.done and vim.startswith(typed, s.text) then
-      return "", row, col
+      return ""
     end
     return nil
   end
   if s.text:sub(1, #typed) ~= typed then
     return nil
   end
-  return s.text:sub(#typed + 1), row, col
+  return s.text:sub(#typed + 1)
 end
 
 -- With the gate on, a late shaky token can still veto the whole text, so the
@@ -151,14 +151,15 @@ local function render()
   if not active then
     return
   end
-  local rest, row, col = remaining(active)
+  local rest = remaining(active)
   if not rest then
     return discard()
   end
   if not showable(active) then
     return ui.clear(active.buf)
   end
-  ui.show(active.buf, row, col, rest)
+  local cur = vim.api.nvim_win_get_cursor(0)
+  ui.show(active.buf, cur[1], cur[2], rest)
   if rest ~= "" and not active.shown then
     active.shown = true
     emit("show", { purpose = active.purpose, ms = now() - active.t0, text = rest })
@@ -336,7 +337,7 @@ function M.accept(kind)
   if not active or not showable(active) then
     return false
   end
-  local rest, row, col = remaining(active)
+  local rest = remaining(active)
   if not rest or rest == "" then
     return false
   end
@@ -347,6 +348,7 @@ function M.accept(kind)
     take = rest:match "^\n?[^\n]*"
   end
   local buf = active.buf
+  local row, col = unpack(vim.api.nvim_win_get_cursor(0))
   local lines = vim.split(take, "\n", { plain = true })
   local function insert()
     vim.api.nvim_buf_set_text(buf, row - 1, col, row - 1, col, lines)
