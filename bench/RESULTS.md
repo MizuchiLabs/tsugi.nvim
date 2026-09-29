@@ -7,21 +7,21 @@ differences under ~5 points as noise.
 
 ## Models
 
-| model | FIM format | notes |
-|---|---|---|
-| sweep-next-edit-v2-7B Q5_K_M | qwen PSM | Best everywhere. Also does next-edit, so one model can cover both. ~130 tok/s |
-| mellum-4b-dpo Q8_0 | mellum SPM | Close on Go and YAML, weaker on Svelte, Astro, Lua. ~150 tok/s. `/infill` breaks it, it needs SPM with `<filename>` |
-| zeta-2.1 Q8_0 | none | Next-edit only, lost plain FIM. ~90 tok/s, 2x slower than sweep for the same edits |
+| model                        | FIM format | notes                                                                                                               |
+| ---------------------------- | ---------- | ------------------------------------------------------------------------------------------------------------------- |
+| sweep-next-edit-v2-7B Q5_K_M | qwen PSM   | Best everywhere. Also does next-edit, so one model can cover both. ~130 tok/s                                       |
+| mellum-4b-dpo Q8_0           | mellum SPM | Close on Go and YAML, weaker on Svelte, Astro, Lua. ~150 tok/s. `/infill` breaks it, it needs SPM with `<filename>` |
+| zeta-2.1 Q8_0                | none       | Next-edit only, lost plain FIM. ~90 tok/s, 2x slower than sweep for the same edits                                  |
 
 ## Replay: exact-match rate by suite (block policy, `defs` context)
 
-| suite | sweep | mellum |
-|---|---|---|
-| go (kagi) | 66% | 57% |
-| svelte (suimon) | 51% | 38% |
-| astro (lyvo) | 38% | 34% |
-| yaml (nokku, helm) | 48% | 46% |
-| lua (nvim config) | 38% | 21% |
+| suite              | sweep | mellum |
+| ------------------ | ----- | ------ |
+| go (kagi)          | 66%   | 57%    |
+| svelte (suimon)    | 51%   | 38%    |
+| astro (lyvo)       | 38%   | 34%    |
+| yaml (nokku, helm) | 48%   | 46%    |
+| lua (nvim config)  | 38%   | 21%    |
 
 ## What moved the needle
 
@@ -39,12 +39,12 @@ differences under ~5 points as noise.
 
 ## Typing sim at 100 wpm (sweep, defs, block)
 
-| suite | gate | keystrokes saved | ghost wrong from its first word |
-|---|---|---|---|
-| go | -0.1 | 67% | 9% of keystrokes |
-| go | off | 77% | 29% |
-| svelte | -0.1 | 55% | 7% |
-| svelte | off | 61% | 18% |
+| suite  | gate | keystrokes saved | ghost wrong from its first word |
+| ------ | ---- | ---------------- | ------------------------------- |
+| go     | -0.1 | 67%              | 9% of keystrokes                |
+| go     | off  | 77%              | 29%                             |
+| svelte | -0.1 | 55%              | 7%                              |
+| svelte | off  | 61%              | 18%                             |
 
 Time to ghost p50 58 to 70ms back then, but that counted ghosts the gate later
 wiped (see below). No mismatches: every retyped function came out
@@ -58,11 +58,11 @@ stream in token by token. A late shaky token then wiped a ghost the user had
 already seen. The typing sim now counts flickers: a ghost that disappears with
 no keystroke since it last changed.
 
-| suite | ghost shown | keystrokes saved | hides / 100 chars | flickers / 100 chars | time to ghost p50 / p90 |
-|---|---|---|---|---|---|
-| go | while streaming | 67% | 12.4 | 9.4 | 59 / 71ms |
-| go | after verdict | 67% | 2.7 | 0.0 | 126 / 229ms |
-| svelte | after verdict | 54% | 4.9 | 0.0 | 123 / 273ms |
+| suite  | ghost shown     | keystrokes saved | hides / 100 chars | flickers / 100 chars | time to ghost p50 / p90 |
+| ------ | --------------- | ---------------- | ----------------- | -------------------- | ----------------------- |
+| go     | while streaming | 67%              | 12.4              | 9.4                  | 59 / 71ms               |
+| go     | after verdict   | 67%              | 2.7               | 0.0                  | 126 / 229ms             |
+| svelte | after verdict   | 54%              | 4.9               | 0.0                  | 123 / 273ms             |
 
 Same savings, no flicker, but the first ghost now costs the whole generation
 (~8ms per token at 130 tok/s). Also, blink opens its menu on almost every
