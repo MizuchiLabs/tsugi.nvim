@@ -32,6 +32,11 @@ Needs Neovim 0.12+, `curl`, and a running llama-server.
     url = "http://127.0.0.1:8080",
   },
 }
+-- vim.pack
+vim.pack.add { "https://github.com/MizuchiLabs/tsugi.nvim" }
+require("tsugi").setup {
+  url = "http://127.0.0.1:8080",
+}
 ```
 
 ## Configuration
