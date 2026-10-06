@@ -78,6 +78,9 @@ tests/          unit tests, run with nvim -l tests/run.lua
   unaffected since decoding is greedy.
 - A model that was idle may be unloaded. The first request then takes seconds.
   Warm it up before timing anything.
+- The `x-` suites are public repos pinned to a commit, fetched into
+  `bench/cache` on first use. Judge a change on them too. A gain that shows
+  only on the maintainer's repos is overfitting.
 - The replay writes per-point logs to `bench/out/*.jsonl`. Read the wrong cases
   before tuning anything. Most insights so far came from reading them.
 - The typing sim checks that every retyped function comes out byte-identical.

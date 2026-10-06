@@ -114,6 +114,25 @@ local function files_of(suite, repo)
   end, files)
 end
 
+---Fetches a pinned public repo into bench/cache on first use.
+---@return string dir
+---@return fun(...: string): string git runs git in dir and returns its output
+local function fetch(suite)
+  local dir = M.root .. "/bench/cache/" .. suite.name
+  local function git(...)
+    local r = vim.system({ "git", "-C", dir, ... }, { text = true }):wait()
+    assert(r.code == 0, r.stderr)
+    return r.stdout
+  end
+  if not vim.uv.fs_stat(dir) then
+    vim.fn.mkdir(dir, "p")
+    git("init", "-q")
+    git("fetch", "-q", "--depth", "1", suite.url, suite.rev, suite.base)
+    git("checkout", "-q", suite.rev)
+  end
+  return dir, git
+end
+
 local function shuffle(t)
   for i = #t, 2, -1 do
     local j = math.random(i)
@@ -132,12 +151,24 @@ end
 ---functions, at most one per file.
 function M.load(suite, seed)
   math.randomseed(seed)
-  local repo = vim.fs.normalize(suite.repo)
+  local repo, added
+  if suite.url then
+    local git
+    repo, git = fetch(suite)
+    if suite.base then
+      added = {}
+      for f in git("diff", "-M", "-l0", "--diff-filter=A", "--name-only", suite.base, suite.rev):gmatch "[^\n]+" do
+        added[f] = true
+      end
+    end
+  else
+    repo = vim.fs.normalize(suite.repo)
+  end
   local files = files_of(suite, repo)
   local contents, funcs = {}, {}
   for _, f in ipairs(files) do
     contents[f] = vim.fn.readfile(repo .. "/" .. f)
-    if not suite.pick or f:match(suite.pick) then
+    if (not suite.pick or f:match(suite.pick)) and (not added or added[f]) then
       vim.list_extend(funcs, (suite.blocks and find_blocks or find_funcs)(f, contents[f]))
     end
   end
@@ -149,6 +180,15 @@ function M.load(suite, seed)
       seen[fn.file] = true
       picked[#picked + 1] = fn
     end
+  end
+  if suite.files then
+    local some = {}
+    for _, f in ipairs(files) do
+      if seen[f] or #some < suite.files then
+        some[#some + 1] = f
+      end
+    end
+    files = some
   end
   return { repo = repo, files = files, contents = contents, picked = picked }
 end
