@@ -4,40 +4,43 @@ AI code completion for Neovim on your own GPU. It talks to a llama.cpp server,
 shows the rest of your line or block as ghost text, and stays quiet when the
 model isn't sure. Pure Lua, no daemon, no cloud. Work in progress.
 
-## How it works
+## Quick start
 
-1. You type. After a short pause (`debounce`) tsugi sends the code around the
-   cursor plus relevant snippets from your other buffers (`context`) to the server.
-2. The answer streams back and gets cut down to one statement, or the whole
-   block when the statement opens one (`lines`). Generation stops as soon as
-   the rest would be thrown away.
-3. The confidence gate multiplies the model's own token probabilities as they
-   arrive. The ghost ends before the first token that takes the product below
-   `confidence`, and generation stops there. A wrong ghost costs more than no ghost.
-4. The ghost appears with the first token. Keep typing and it follows along as
-   long as you type what it says. Accept it all, a word, or a line.
-5. While you read the ghost, tsugi already asks for what comes after it
-   (`prefetch`), so chained accepts often show the next ghost instantly.
+Needs Neovim 0.12+, `curl`, and [llama.cpp](https://github.com/ggml-org/llama.cpp).
 
-## Install
+1. Download a model. The default is Mellum2, get `Mellum2-12B-A2.5B-Base.Q4_K_M.gguf` from
+   [mradermacher/Mellum2-12B-A2.5B-Base-GGUF](https://huggingface.co/mradermacher/Mellum2-12B-A2.5B-Base-GGUF).
 
-Needs Neovim 0.12+, `curl`, and a running llama-server.
+2. Start the server. More on this under [Server](#server).
 
-```lua
--- lazy.nvim
-{
-  "MizuchiLabs/tsugi.nvim",
-  lazy = false,
-  opts = {
-    url = "http://127.0.0.1:8080",
-  },
-}
--- vim.pack
-vim.pack.add { "https://github.com/MizuchiLabs/tsugi.nvim" }
-require("tsugi").setup {
-  url = "http://127.0.0.1:8080",
-}
-```
+   ```sh
+   llama-server -m Mellum2-12B-A2.5B-Base.Q4_K_M.gguf --ctx-size 8192 --flash-attn on
+   ```
+
+3. Install the plugin.
+
+   With lazy.nvim:
+
+   ```lua
+   {
+     "MizuchiLabs/tsugi.nvim",
+     lazy = false,
+     opts = {
+       url = "http://127.0.0.1:8080",
+     },
+   }
+   ```
+
+   With vim.pack:
+
+   ```lua
+   vim.pack.add { "https://github.com/MizuchiLabs/tsugi.nvim" }
+   require("tsugi").setup {
+     url = "http://127.0.0.1:8080",
+   }
+   ```
+
+Open a file in a real project and type. Accept the ghost with `<M-f>`.
 
 ## Configuration
 
@@ -80,7 +83,8 @@ require("tsugi").setup {
   prefetch = true,
 
   -- Set a key to false to leave it unmapped. With nothing to accept, the key
-  -- does what it normally does (except Alt keys).
+  -- does what it normally does. Alt keys are the exception, because terminals
+  -- send them as Esc plus the key.
   keymaps = {
     accept = "<M-f>",
     accept_word = "<C-Right>",
@@ -155,42 +159,50 @@ When a plugin like blink.pairs has already put the closing bracket or quote
 after the cursor, the ghost stops before it instead of writing it again. A
 ghost that was on screen before the pair appeared stays up.
 
+## How it works
+
+1. You type. After a short pause (`debounce`) tsugi sends the code around the
+   cursor plus relevant snippets from your other buffers (`context`) to the server.
+2. The answer streams back and gets cut down to one statement, or the whole
+   block when the statement opens one (`lines`). Generation stops as soon as
+   the rest would be thrown away.
+3. tsugi tracks how sure the model is as the tokens arrive. The ghost ends
+   where that drops below `confidence`, and generation stops there. A wrong
+   ghost costs more than no ghost.
+4. The ghost appears with the first token. Keep typing and it follows along as
+   long as you type what it says. Accept it all, a word, or a line.
+5. While you read the ghost, tsugi already asks for what comes after it
+   (`prefetch`), so chained accepts often show the next ghost instantly.
+
 ## Which model
 
 tsugi uses one model at a time. Switch with `:Tsugi model`.
 
+| key       | model                         | notes                                                                   |
+| --------- | ----------------------------- | ----------------------------------------------------------------------- |
+| `mellum2` | Mellum2-12B-A2.5B-Base Q4_K_M | the default. MoE, fastest to the first token while you type             |
+| `seed`    | Seed-Coder-8B-Base Q8_0       | as precise as mellum2, slower decode (~80 tok/s) that you rarely notice |
+| `sweep`   | sweep-next-edit-v2-7B Q5_K_M  | quick after a cursor jump, least precise of the three                   |
+| `mellum`  | mellum-4b-dpo Q8_0            | the small one. About as precise as sweep, behind mellum2 and seed       |
+
 Mellum2 and Seed-Coder are the most precise. At the default gate about 9 in 10
 of their ghosts are fully right, against 8 in 10 for sweep, for about the same
 amount of text. That holds on the maintainer's repos and on public repos the
-benches keep as a held-out set. sweep is the one that also does next-edit.
+benches keep as a held-out set.
 
-The two put the lines below the cursor first in the prompt, sweep puts them
-last. That makes typing cheap for them, ~35ms to the ghost against ~50ms. The
-price is the first ghost after you move the cursor somewhere else: ~350ms for
-them, ~50ms for sweep.
+mellum2 is at or near the top in every language we test: Go, Svelte,
+TypeScript, Astro, Lua, Python, and Rust. seed wins on YAML and Helm.
 
-| language            | most precise  |
-| ------------------- | ------------- |
-| Go                  | seed, mellum2 |
-| Svelte / TypeScript | mellum2, seed |
-| Astro               | mellum2       |
-| YAML / Helm         | seed          |
-| Lua                 | mellum2, seed |
-| Python              | mellum2, seed |
-| Rust                | mellum2       |
-
-Measured with `bench/replay.lua` and `bench/typing.lua`, details and raw
-numbers in `bench/RESULTS.md`.
-
-| key       | model                         | notes                                                                      |
-| --------- | ----------------------------- | -------------------------------------------------------------------------- |
-| `mellum2` | Mellum2-12B-A2.5B-Base Q4_K_M | the default. MoE, fastest to the first token while you type                |
-| `seed`    | Seed-Coder-8B-Base Q8_0       | as precise as mellum2, slower decode (~80 tok/s) that you rarely notice    |
-| `sweep`   | sweep-next-edit-v2-7B Q5_K_M  | also does next-edit, quick after a cursor jump, least precise of the three |
-| `mellum`  | mellum-4b-dpo Q8_0            | the small one. About as precise as sweep, behind mellum2 and seed          |
+Mellum2 and Seed-Coder put the lines below the cursor first in the prompt,
+sweep puts them last. That makes typing cheap for the first two, ~35ms to the
+ghost against ~50ms. The price is the first ghost after you move the cursor
+somewhere else: ~350ms for them, ~50ms for sweep.
 
 Use base or completion-tuned models. Instruct and thinking variants are made for
 chat, and thinking ones write reasoning before any code.
+
+Measured with `bench/replay.lua` and `bench/typing.lua`, details and raw
+numbers in `bench/RESULTS.md`.
 
 ## Server
 
@@ -214,9 +226,6 @@ cache-reuse = 128
 - Set `--ctx-size`. The default is the model's training size, 131k for Mellum2
   and 32k for sweep and seed, and all of it is reserved in VRAM. tsugi's
   completion prompts are 1k to 2k tokens.
-- `--cache-reuse` lets the server keep its work when the prompt window moves
-  down the file. For sweep every such jump recomputes the whole prompt (~220ms)
-  without it and takes ~50ms with it. It does nothing for Mellum2.
 - Leave speculative decoding off (`--spec-type`). Speculated tokens come back
   without their probabilities, so the confidence gate can't judge them.
 - Keep the model loaded. An idle unload (`--sleep-idle-seconds`) makes the next
@@ -225,6 +234,11 @@ cache-reuse = 128
   edited before then costs ~45ms instead of ~250ms.
 - On a 24GB card, keep one or two models loaded. Three of these at once run out
   of VRAM and latency goes up tenfold.
+
+If you run sweep, also set `--cache-reuse 128`. It lets the server keep its
+work when the prompt window moves down the file. Without it every such jump
+recomputes the whole prompt (~220ms), with it the jump takes ~50ms. It does
+nothing for Mellum2.
 
 ## Development
 
