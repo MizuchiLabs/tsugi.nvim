@@ -4,38 +4,28 @@ local trim = require "tsugi.trim"
 
 local M = {}
 
-local function confidence(tokens, len)
-  local min, sum, n = 0, 0, 0
-  for _, t in ipairs(tokens) do
-    if t.at > len then
-      break
-    end
-    min = math.min(min, t.logprob)
-    sum = sum + t.logprob
-    n = n + 1
-  end
-  if n == 0 then
-    return nil
-  end
-  return { min = min, mean = sum / n, first = tokens[1].logprob }
-end
-
 ---@class tsugi.Progress
 ---@field ttft? number ms to first token
 ---@field timings? table llama.cpp timings, only when the model stopped on its own
 ---@field prompt_chars integer
 ---@field error? string
----@field confidence? { min: number, mean: number, first: number } token logprobs over the kept text
+---@field cut? boolean the confidence floor shortened the text
+---@field tokens { at: integer, len: integer, logprob: number }[] every token streamed so far
+
+---@class tsugi.Limits
+---@field lines "block"|integer see tsugi.trim
+---@field confidence number|false see tsugi.Config
 
 ---Starts a FIM request and reports trimmed text on the main loop. Generation is
----cancelled as soon as the stop rules say the rest would be thrown away.
+---cancelled as soon as the rest would be thrown away: the stop rules ended the
+---text, or the model is no longer sure enough of it.
 ---@param url string
 ---@param model tsugi.Model
 ---@param ctx tsugi.Context
----@param limit "block"|integer see tsugi.trim
+---@param limits tsugi.Limits
 ---@param cb fun(text: string, done: boolean, info: tsugi.Progress)
 ---@return vim.SystemObj
-function M.fim(url, model, ctx, limit, cb)
+function M.fim(url, model, ctx, limits, cb)
   local req = format.fim[model.fim](ctx)
   local stop = vim.list_extend({}, req.stop)
   if ctx.lines[ctx.row]:sub(ctx.col + 1):match "%S" then
@@ -43,9 +33,9 @@ function M.fim(url, model, ctx, limit, cb)
   end
 
   local t0 = vim.uv.hrtime()
-  local info = { prompt_chars = #req.prompt }
-  local raw, finished = "", false
   local tokens, pos = {}, 0
+  local info = { prompt_chars = #req.prompt, tokens = tokens }
+  local raw, finished = "", false
   local handle
   handle = http.stream(url .. "/completion", {
     model = model.id,
@@ -70,13 +60,22 @@ function M.fim(url, model, ctx, limit, cb)
         info.ttft = (vim.uv.hrtime() - t0) / 1e6
       end
       for _, p in ipairs(msg.completion_probabilities or {}) do
-        tokens[#tokens + 1] = { at = pos + 1, logprob = p.logprob }
+        tokens[#tokens + 1] = { at = pos + 1, len = #p.token, logprob = p.logprob }
         pos = pos + #p.token
       end
       raw = raw .. piece
       local final = msg.stop == true
-      local text, done = trim.fim(raw, ctx.lines, ctx.row, ctx.col, final, limit)
-      info.confidence = confidence(tokens, #text)
+      local text, done = trim.fim(raw, ctx.lines, ctx.row, ctx.col, final, limits.lines)
+      if limits.confidence then
+        local sure = trim.sure(tokens, #text, limits.confidence)
+        if sure < #text then
+          text = text:sub(1, sure):gsub("%s+$", "")
+          done, info.cut = true, true
+        end
+      end
+      if (done or final) and not text:match "%S" then
+        text = ""
+      end
       if done or final then
         finished = true
         info.timings = msg.timings

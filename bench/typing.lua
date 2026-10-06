@@ -4,7 +4,7 @@
 -- next word when those are right. Chained accepts take half the reaction time.
 --
 -- nvim -l bench/typing.lua [--suite go] [--funcs 3] [--model sweep]
---   [--context defs] [--wpm 100] [--reaction 250] [--seed 1] [--debounce 20] [--lines block|N] [--confidence -0.1|off]
+--   [--context defs] [--wpm 100] [--reaction 250] [--seed 1] [--debounce 20] [--lines block|N] [--confidence 0.7|off]
 local lib = dofile(vim.fs.dirname(vim.fs.abspath(arg[0])) .. "/lib.lua")
 
 local opts = lib.args {
@@ -18,7 +18,7 @@ local opts = lib.args {
   debounce = "20",
   prefetch = "true",
   lines = "block",
-  confidence = "-0.1",
+  confidence = "0.7",
   verbose = "false",
 }
 
@@ -75,8 +75,10 @@ local function lua(code, ...)
 end
 local keys_at = {}
 local function input(keys)
-  keys_at[#keys_at + 1] = now()
+  local t = now()
+  keys_at[#keys_at + 1] = t
   vim.rpcrequest(chan, "nvim_input", keys)
+  return t
 end
 
 lua(
@@ -130,6 +132,8 @@ local total = {
   adopts = 0,
   mismatch = 0,
   show_ms = {},
+  next_ms = {},
+  next_missed = 0,
   done = {},
   secs = 0,
 }
@@ -166,6 +170,7 @@ for i = 1, math.min(assert(tonumber(opts.funcs)), #set.picked) do
   )
   input "A"
   keys_at = {}
+  local full_accepts = {}
 
   local truth = "\n" .. table.concat(lines, "\n", fn.first + 1, fn.last - 1)
   local pos, seen_at, last_wrong, chained = 1, nil, nil, false
@@ -208,7 +213,10 @@ for i = 1, math.min(assert(tonumber(opts.funcs)), #set.picked) do
     -- A user chaining accepts is quicker than one reacting to a fresh ghost.
     local wait = chained and reaction / 2 or reaction
     if action and now() - seen_at >= wait then
-      input(action.key)
+      local t = input(action.key)
+      if action.kind == "all" then
+        full_accepts[#full_accepts + 1] = t
+      end
       if opts.verbose == "true" then
         io.write(("  accept %s %q\n"):format(action.kind, action.take))
       end
@@ -233,6 +241,8 @@ for i = 1, math.min(assert(tonumber(opts.funcs)), #set.picked) do
   end
   vim.wait(50)
 
+  -- Taken before leaving insert mode, which clears the ghost and would count as a flicker.
+  local log = lua "return _G.log"
   local got = lua "vim.cmd('stopinsert') return vim.api.nvim_buf_get_lines(0, 0, -1, false)"
   local ok = table.concat(got, "\n") == table.concat(lines, "\n")
   if not ok then
@@ -241,7 +251,6 @@ for i = 1, math.min(assert(tonumber(opts.funcs)), #set.picked) do
     io.write(("MISMATCH %s:%d\n%s\n"):format(fn.file, fn.first, diff))
   end
 
-  local log = lua "return _G.log"
   local shown, req_t, shown_at, k = false, {}, 0, 1
   for _, e in ipairs(log) do
     if e.ev == "request" then
@@ -276,6 +285,24 @@ for i = 1, math.min(assert(tonumber(opts.funcs)), #set.picked) do
         shown_at = e.t
       end
       shown = e.text ~= ""
+    end
+  end
+
+  -- Tabbing through: how soon the next ghost follows a full accept, if it
+  -- comes before the next key at all.
+  local ki, li = 1, 1
+  for _, t in ipairs(full_accepts) do
+    while keys_at[ki] and keys_at[ki] <= t do
+      ki = ki + 1
+    end
+    while log[li] and (log[li].t <= t or log[li].ev ~= "ui" or log[li].text == "") do
+      li = li + 1
+    end
+    local e = log[li]
+    if e and (not keys_at[ki] or e.t < keys_at[ki]) then
+      total.next_ms[#total.next_ms + 1] = e.t - t
+    else
+      total.next_missed = total.next_missed + 1
     end
   end
 
@@ -338,6 +365,15 @@ io.write(
     total.adopts,
     total.mismatch,
     total.secs
+  )
+)
+
+io.write(
+  ("after a full accept: next ghost in p50 %.0fms p90 %.0fms, none before the next key in %d of %d\n"):format(
+    lib.percentile(total.next_ms, 0.5),
+    lib.percentile(total.next_ms, 0.9),
+    total.next_missed,
+    total.next_missed + #total.next_ms
   )
 )
 

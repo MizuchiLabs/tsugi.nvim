@@ -1,7 +1,9 @@
 local config = require "tsugi.config"
 local context = require "tsugi.context"
 local complete = require "tsugi.complete"
+local format = require "tsugi.format"
 local stats = require "tsugi.stats"
+local trim = require "tsugi.trim"
 local ui = require "tsugi.ui"
 
 local M = {}
@@ -70,7 +72,8 @@ end
 local function snapshot()
   local buf = vim.api.nvim_get_current_buf()
   local cur = vim.api.nvim_win_get_cursor(0)
-  local first, last = context.window(cur[1], vim.api.nvim_buf_line_count(buf), 120, 40)
+  local below = format.suffix[config.models[config.model].fim]
+  local first, last = context.window(cur[1], vim.api.nvim_buf_line_count(buf), 120, below)
   return {
     buf = buf,
     path = vim.fn.fnamemodify(vim.api.nvim_buf_get_name(buf), ":."),
@@ -113,7 +116,10 @@ local function remaining(s)
     return nil
   end
   local line = vim.api.nvim_buf_get_lines(s.buf, row - 1, row, false)[1] or ""
-  if line:sub(col + 1) ~= s.after then
+  local after = line:sub(col + 1)
+  -- An autopairs plugin may have put closers right after the cursor since.
+  local closers = after:sub(1, #after - #s.after)
+  if not vim.endswith(after, s.after) or closers:match "[^%)%]}\"'`]" then
     return nil
   end
   local typed = table.concat(vim.api.nvim_buf_get_text(s.buf, s.row - 1, s.col, row - 1, col, {}), "\n")
@@ -126,13 +132,7 @@ local function remaining(s)
   if s.text:sub(1, #typed) ~= typed then
     return nil
   end
-  return s.text:sub(#typed + 1)
-end
-
--- With the gate on, a late shaky token can still veto the whole text, so the
--- ghost waits for the verdict instead of flashing and vanishing.
-local function showable(s)
-  return not hidden and (s.done or not config.confidence)
+  return (trim.until_closer(s.text:sub(#typed + 1), closers))
 end
 
 local function discard()
@@ -155,12 +155,12 @@ local function render()
   if not rest then
     return discard()
   end
-  if not showable(active) then
+  if hidden or not rest:match "%S" then
     return ui.clear(active.buf)
   end
   local cur = vim.api.nvim_win_get_cursor(0)
   ui.show(active.buf, cur[1], cur[2], rest)
-  if rest ~= "" and not active.shown then
+  if not active.shown then
     active.shown = true
     emit("show", { purpose = active.purpose, ms = now() - active.t0, text = rest })
   end
@@ -206,13 +206,8 @@ local function on_update(s, text, done, info)
     return
   end
   s.ttft = info.ttft
-  local conf = info.confidence
-  local gated = config.confidence and conf and conf.mean < config.confidence or false
-  local raw = text
-  if gated then
-    text = ""
-  end
-  -- While streaming, only whole lines grow the ghost so it never ends mid-word.
+  -- The first line grows token by token. Later lines wait until they are whole,
+  -- since a stop rule may still drop them.
   s.text = done and text or (text:match "^(.*)\n" or text)
   if done then
     s.done = true
@@ -225,9 +220,7 @@ local function on_update(s, text, done, info)
         ms = now() - s.t0,
         ttft = s.ttft,
         text = text,
-        raw = raw,
-        conf = conf and conf.mean,
-        gated = gated,
+        cut = info.cut,
         timings = info.timings,
       })
     end
@@ -258,7 +251,8 @@ function start(ctx, purpose, key)
     t0 = now(),
   }
   emit("request", { purpose = purpose })
-  s.handle = complete.fim(config.url, config.models[config.model], ctx, config.lines, function(text, done, info)
+  local limits = { lines = config.lines, confidence = config.confidence }
+  s.handle = complete.fim(config.url, config.models[config.model], ctx, limits, function(text, done, info)
     on_update(s, text, done, info)
   end)
   return s
@@ -334,11 +328,8 @@ end
 ---@param kind "all"|"word"|"line"
 ---@return boolean accepted
 function M.accept(kind)
-  if not active or not showable(active) then
-    return false
-  end
-  local rest = remaining(active)
-  if not rest or rest == "" then
+  local rest = M.visible()
+  if not active or not rest then
     return false
   end
   local take = rest
@@ -379,12 +370,14 @@ function M.dismiss()
   prefetch = nil
 end
 
+---The ghost on screen, if any.
+---@return string?
 function M.visible()
-  if not active or not showable(active) then
+  if not active or hidden then
     return nil
   end
   local rest = remaining(active)
-  return rest ~= "" and rest or nil
+  return rest and rest:match "%S" and rest or nil
 end
 
 function M.reset()

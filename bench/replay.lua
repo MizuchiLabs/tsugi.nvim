@@ -6,8 +6,16 @@
 -- ones that diverge. sv/pt: chars a user would accept per point (full accept
 -- when ok, word-wise up to the first mistake otherwise).
 --
+-- With --pairs true the cursor sits right after an opening bracket or quote and
+-- the closer is already in the buffer, the state an autopairs plugin leaves.
+-- The truth is then the text up to that closer.
+--
+-- The log keeps every token's length and logprob. Run with --confidence off to
+-- log the uncut text, then other floors can be tried on the log without a rerun.
+--
 -- nvim -l bench/replay.lua [--suite go,lua] [--model mellum,sweep]
 --   [--context none,defs,similar,recent,defs+recent] [--points 8] [--seed 1] [--lines block|N] [--suffix N]
+--   [--confidence 0.7|off] [--pairs true]
 local lib = dofile(vim.fs.dirname(vim.fs.abspath(arg[0])) .. "/lib.lua")
 vim.opt.rtp:prepend(lib.root)
 
@@ -23,12 +31,26 @@ local opts = lib.args {
   seed = "1",
   lines = "block",
   suffix = "",
+  confidence = tostring(config.confidence),
+  pairs = "false",
 }
-local limit = tonumber(opts.lines) or opts.lines
+local limits = { lines = tonumber(opts.lines) or opts.lines, confidence = tonumber(opts.confidence) or false }
 if opts.suffix ~= "" then
   for name in pairs(format.suffix) do
     format.suffix[name] = tonumber(opts.suffix)
   end
+end
+
+---At most max of the points, evenly spread.
+local function spread(all, max)
+  if #all <= max then
+    return all
+  end
+  local out = {}
+  for i = 1, max do
+    out[i] = all[math.floor((i - 1) * #all / max) + 1]
+  end
+  return out
 end
 
 ---Points spread over the function body: line starts and a mid-line spot.
@@ -45,14 +67,45 @@ local function points_of(lines, fn, max)
       end
     end
   end
-  if #all <= max then
-    return all
+  return spread(all, max)
+end
+
+local closers = { ["("] = ")", ["["] = "]", ["{"] = "}", ["\""] = "\"" }
+
+---The closer matching the opener at s, when it is on the same line.
+local function closer_of(l, s)
+  local open = l:sub(s, s)
+  local close = closers[open]
+  if open == close then
+    return l:find(close, s + 1, true)
   end
-  local out = {}
-  for i = 1, max do
-    out[i] = all[math.floor((i - 1) * #all / max) + 1]
+  local depth = 0
+  for i = s, #l do
+    local c = l:sub(i, i)
+    if c == open then
+      depth = depth + 1
+    elseif c == close and depth == 1 then
+      return i
+    elseif c == close then
+      depth = depth - 1
+    end
   end
-  return out
+end
+
+---One point per line: just inside the first opener that closes on that line.
+local function pair_points_of(lines, fn, max)
+  local all = {}
+  for r = fn.first + 1, fn.last - 1 do
+    local l = lines[r]
+    for s = 1, #l do
+      local e = closers[l:sub(s, s)] and closer_of(l, s)
+      if e and e - s > 2 then
+        all[#all + 1] = { row = r, col = s, close = l:sub(e, e), inside = l:sub(s + 1, e - 1) }
+        break
+      end
+    end
+  end
+  return spread(all, max)
 end
 
 local function word_snap(s, n)
@@ -80,7 +133,7 @@ local function score(truth, got)
 end
 
 local function run_point(model, names, buf, path, lines, pt)
-  local first, last = context.window(pt.row, #lines, 120, 40)
+  local first, last = context.window(pt.row, #lines, 120, format.suffix[model.fim])
   local ctx = {
     path = path,
     lines = vim.list_slice(lines, first, last),
@@ -93,7 +146,7 @@ local function run_point(model, names, buf, path, lines, pt)
 
   local result
   local t0 = vim.uv.hrtime()
-  complete.fim(lib.url, model, ctx, limit, function(text, done, info)
+  complete.fim(lib.url, model, ctx, limits, function(text, done, info)
     if done then
       result = { text = text, info = info, ms = (vim.uv.hrtime() - t0) / 1e6 }
     end
@@ -147,26 +200,42 @@ for _, suite in ipairs(lib.suites(lib.list(opts.suite))) do
     for _, ctx_name in ipairs(lib.list(opts.context)) do
       local names = vim.split(ctx_name, "+", { plain = true })
       local stats = { n = 0, shown = 0, ok = 0, line = 0, wrong = 0, saved = 0, ms = {}, ctx_ms = 0, chars = 0 }
-      local log =
-        assert(io.open(("%s/%s-%s-%s-%s.jsonl"):format(out_dir, suite.name, model_name, ctx_name, opts.lines), "w"))
+      local pairs_mode = opts.pairs == "true"
+      local log = assert(
+        io.open(
+          ("%s/%s-%s-%s-%s%s.jsonl"):format(
+            out_dir,
+            suite.name,
+            model_name,
+            ctx_name,
+            opts.lines,
+            pairs_mode and "-pairs" or ""
+          ),
+          "w"
+        )
+      )
 
       for _, fn in ipairs(picked) do
         local lines = contents[fn.file]
         local buf = bufs[fn.file]
         vim.api.nvim_set_current_buf(buf)
-        for _, pt in ipairs(points_of(lines, fn, tonumber(opts.points))) do
+        for _, pt in ipairs((pairs_mode and pair_points_of or points_of)(lines, fn, tonumber(opts.points))) do
           local virtual = vim.list_slice(lines, 1, pt.row - 1)
-          virtual[#virtual + 1] = lines[pt.row]:sub(1, pt.col)
+          virtual[#virtual + 1] = lines[pt.row]:sub(1, pt.col) .. (pt.close or "")
           vim.list_extend(virtual, lines, fn.last)
           vim.api.nvim_buf_set_lines(buf, 0, -1, false, virtual)
 
-          local truth = lines[pt.row]:sub(pt.col + 1)
-          if fn.last - 1 > pt.row then
+          local truth = pt.inside or lines[pt.row]:sub(pt.col + 1)
+          if not pt.inside and fn.last - 1 > pt.row then
             truth = truth .. "\n" .. table.concat(lines, "\n", pt.row + 1, fn.last - 1)
           end
 
           local r = run_point(model, names, buf, fn.file, virtual, pt)
           local s = score(truth, r.text)
+          local tokens = {}
+          for i, t in ipairs(r.info.tokens or {}) do
+            tokens[i] = { t.len, t.logprob }
+          end
           stats.n = stats.n + 1
           stats.ms[#stats.ms + 1] = r.ms
           stats.ctx_ms = stats.ctx_ms + r.ctx_ms
@@ -187,7 +256,8 @@ for _, suite in ipairs(lib.suites(lib.list(opts.suite))) do
               kind = s.kind,
               saved = s.saved,
               ms = math.floor(r.ms),
-              conf = r.info.confidence,
+              cut = r.info.cut,
+              tokens = tokens,
               got = r.text,
               want = truth:sub(1, 300),
               error = r.info.error,

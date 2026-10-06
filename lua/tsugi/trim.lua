@@ -12,6 +12,63 @@ local function opens(s)
   return s:match "[{(%[]%s*$" ~= nil
 end
 
+local openers = { [")"] = "(", ["]"] = "[", ["}"] = "{" }
+local quotes = { ["\""] = true, ["'"] = true, ["`"] = true }
+
+---Cuts text before it repeats the closer that already sits after the cursor,
+---like the one an autopairs plugin puts there: a bracket the text did not open
+---itself, or the quote that ends the string the cursor is in.
+---@param text string
+---@param tail string text after the cursor
+---@return string text
+---@return boolean cut
+function M.until_closer(text, tail)
+  local closer = tail:match "^%s*(.)"
+  local opener = openers[closer]
+  if not opener and not quotes[closer] then
+    return text, false
+  end
+  local depth, i = 0, 1
+  while i <= #text do
+    local c = text:sub(i, i)
+    if c == "\\" then
+      i = i + 1
+    elseif c == closer then
+      if depth == 0 then
+        return text:sub(1, i - 1), true
+      end
+      depth = depth - 1
+    elseif c == opener then
+      depth = depth + 1
+    end
+    i = i + 1
+  end
+  return text, false
+end
+
+---How much of the text the model is sure about: the longest run of tokens from
+---the start whose joint probability stays at or above `floor`. A later token
+---can only lower it, so the cut is final even while streaming. Text that came
+---without a token probability is not trusted.
+---@param tokens { at: integer, len: integer, logprob: number }[] `at` is the 1-based start in the raw output
+---@param len integer length of the kept text
+---@param floor number probability from 0 to 1
+---@return integer chars
+function M.sure(tokens, len, floor)
+  local limit, sum, chars = math.log(floor), 0, 0
+  for _, t in ipairs(tokens) do
+    if t.at > len then
+      return len
+    end
+    sum = sum + t.logprob
+    if sum < limit then
+      return chars
+    end
+    chars = math.min(len, t.at + t.len - 1)
+  end
+  return chars
+end
+
 ---Cuts raw (possibly still streaming) FIM output down to what is worth showing.
 ---`limit` "block" keeps one statement, or the whole block when the statement
 ---opens one. A number keeps up to that many lines.
@@ -30,6 +87,10 @@ function M.fim(raw, lines, row, col, final, limit)
   if not blank(rest) then
     local nl = raw:find("\n", 1, true)
     local text = nl and raw:sub(1, nl - 1) or raw
+    local inside, closed = M.until_closer(text, rest)
+    if closed then
+      return inside, true
+    end
     local tail = vim.trim(rest)
     if (nl or final) and #tail >= 4 and vim.endswith(text, tail) then
       text = text:sub(1, -#tail - 1)

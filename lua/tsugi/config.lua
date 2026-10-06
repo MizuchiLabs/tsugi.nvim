@@ -17,8 +17,11 @@ local defaults = {
   context = { "defs" },
   ---"block": one statement, or the whole block it opens. A number: up to that many lines.
   lines = "block",
-  ---Minimum mean token logprob to show a ghost. false shows everything.
-  confidence = -0.1,
+  ---How sure the model must be that the shown text is right, as a probability
+  ---from its own token probabilities. The ghost ends before the first token that
+  ---would take it below. false shows everything.
+  ---@type number|false
+  confidence = 0.7,
   debounce = 20,
   prefetch = true,
   ---Set a key to false to leave it unmapped. With nothing to accept, the key does

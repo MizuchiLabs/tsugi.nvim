@@ -12,8 +12,9 @@ function M.record(name, data)
     if #show_ms > 500 then
       table.remove(show_ms, 1)
     end
-  elseif name == "done" and data.gated then
-    counts.gated = (counts.gated or 0) + 1
+  elseif name == "done" and data.cut then
+    local kind = data.text == "" and "dropped" or "cut"
+    counts[kind] = (counts[kind] or 0) + 1
   elseif name == "accept" then
     accepted = accepted + data.chars
   end
@@ -34,11 +35,12 @@ function M.report()
   end
   local shown = c "show:user" + c "show:prefetch" + c "hit"
   return table.concat({
-    ("requests %d, prefetches %d, cancelled %d, dropped by confidence gate %d"):format(
+    ("requests %d, prefetches %d, cancelled %d, confidence gate cut %d short and dropped %d"):format(
       c "request:user",
       c "request:prefetch",
       c "cancel:user",
-      c "gated"
+      c "cut",
+      c "dropped"
     ),
     ("ghosts shown %d, accepted %d (%d chars), cache hits %d, prefetch adopted %d"):format(
       shown,

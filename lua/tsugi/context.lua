@@ -304,14 +304,15 @@ function M.collect(names, q)
   return out
 end
 
----Line range around row with edges snapped to a grid, so the prompt stays
----byte-identical (and cached by llama.cpp) while the cursor moves.
+---Line range around row. The start snaps to a grid, so the lines above stay
+---byte-identical (and cached by llama.cpp) while the cursor moves. The end
+---follows the cursor, so the lines below stay the same text when a line is
+---added above them. Suffix-first prompts would lose their whole cache otherwise.
 ---@return integer first, integer last
 function M.window(row, nlines, above, below)
   local grid = 32
   local first = math.max(1, math.floor((row - above) / grid) * grid + 1)
-  local last = math.min(nlines, math.ceil((row + below) / grid) * grid)
-  return first, last
+  return first, math.min(nlines, row + below)
 end
 
 return M
