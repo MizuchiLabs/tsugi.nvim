@@ -5,7 +5,7 @@
 ---@class tsugi.Config
 local defaults = {
   url = "http://127.0.0.1:8080",
-  model = "sweep",
+  model = "mellum2",
   ---@type table<string, tsugi.Model>
   models = {
     mellum = { id = "mellum-4b-dpo-all.Q8_0", fim = "mellum" },
