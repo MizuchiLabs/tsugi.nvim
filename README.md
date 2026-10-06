@@ -182,7 +182,7 @@ numbers in `bench/RESULTS.md`.
 | `mellum2` | Mellum2-12B-A2.5B-Base Q4_K_M | the default. MoE, fastest to the first token while you type                |
 | `seed`    | Seed-Coder-8B-Base Q8_0       | as precise as mellum2, slower decode (~80 tok/s) that you rarely notice    |
 | `sweep`   | sweep-next-edit-v2-7B Q5_K_M  | also does next-edit, quick after a cursor jump, least precise of the three |
-| `mellum`  | mellum-4b-dpo Q8_0            | small and fast, behind the others                                          |
+| `mellum`  | mellum-4b-dpo Q8_0            | the small one. About as precise as sweep, behind mellum2 and seed          |
 
 Use base or completion-tuned models. Instruct and thinking variants are made for
 chat, and thinking ones write reasoning before any code.

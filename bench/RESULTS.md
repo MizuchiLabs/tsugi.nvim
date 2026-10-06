@@ -18,7 +18,7 @@ commit and do not drift.
 | sweep-next-edit-v2-7B Q5_K_M  | qwen PSM   | The only one that also does next-edit. Least precise of the three, rates its own text too high    |
 | Mellum2-12B-A2.5B-Base Q4_K_M | mellum SPM | The default. Most precise with seed. Cannot resume from the middle of a prompt                    |
 | Seed-Coder-8B-Base Q8_0       | seed SPM   | Most precise with Mellum2. Slow decode (~80 tok/s), which the streaming gate hides                |
-| mellum-4b-dpo Q8_0            | mellum SPM | Behind the others. `/infill` breaks it, it needs SPM with `<filename>`                            |
+| mellum-4b-dpo Q8_0            | mellum SPM | Level with sweep on the held-out suites. `/infill` breaks it, it needs SPM with `<filename>`      |
 | zeta-2.1 Q8_0                 | none       | Next-edit only, lost plain FIM. ~90 tok/s, 2x slower than sweep for the same edits                |
 
 ## Current numbers
@@ -246,6 +246,33 @@ like the window start moving down. It does nothing when text is inserted
 before it. That is why the old test (insert a token before a long tail) showed
 no reuse. The flag also never reached the model processes until the router got
 a preset file. `GET /v1/models` lists the arguments of each model.
+
+## Other models tried
+
+Replay on the held-out suites (ghost shown at / fully right / chars saved per
+point). For reference: sweep 69% / 81% / 10.7, mellum2 68% / 90% / 10.9, seed
+67% / 90% / 11.0.
+
+| model                          | held-out          | notes                                                                             |
+| ------------------------------ | ----------------- | --------------------------------------------------------------------------------- |
+| mellum-4b-dpo Q8_0             | 70% / 82% / 10.0  | the small model in `config.models`. Better than its old numbers suggested         |
+| granite-4.1-3b Q8_0            | 64% / 73% / 7.8   | works with the bare FIM tokens, prefix first. Not added, mellum-4b beats it       |
+| granite-4.2-3b Q8_0            | 12% / 60% / 0.6   | x-go only. A reasoning model, it no longer fills in. The tokens are still there   |
+| gemma-4-E2B-it QAT Q4_K_XL     | 58% / 62% / 7.2   | x-go only. No FIM tokens. Continues the text above the cursor, blind to the rest  |
+
+Granite 4.1 details:
+
+- Format: `<|fim_prefix|>prefix<|fim_suffix|>suffix<|fim_middle|>` with no chat
+  wrapper. On 5 Go lines that got 5 right, the chat wrapper from IBM's README 4,
+  and the same with its newlines around the tags 3.
+- Suffix first gives a ghost at ~5% of points and none of them right.
+- Typing sim, 4 functions: Go 64% saved at 45 / 53ms, Svelte 57% at 39 / 51ms.
+  Sweep does 70% and 65% on the same functions.
+- The model card names the `-base` variants as the ones for FIM. Only the
+  instruct 3b was tried.
+
+Gemma without the gate is right at 23% of points on x-go and 38% on Go. An
+instruction prompt with a cursor marker ignored the marker in 5 of 5 tries.
 
 ## Tried, no gain
 
