@@ -251,7 +251,7 @@ function start(ctx, purpose, key)
     t0 = now(),
   }
   emit("request", { purpose = purpose })
-  local limits = { lines = config.lines, confidence = config.confidence }
+  local limits = { lines = config.lines, confidence = config.confidence, message = config.confidence_message }
   s.handle = complete.fim(config.url, config.models[config.model], ctx, limits, function(text, done, info)
     on_update(s, text, done, info)
   end)

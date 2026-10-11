@@ -24,6 +24,8 @@ commit and do not drift.
 ## Current numbers
 
 Everything below uses `confidence = 0.7`, `defs` context and the block policy.
+The tables are from before the message floor (`confidence_message`). It moves
+these rows by a point at most, see Message strings.
 
 Replay (ghost shown at / fully right / chars saved per point):
 
@@ -77,6 +79,11 @@ No mismatches and no flickers in any run.
 4. **Not repeating the closer.** With an autopairs plugin almost every ghost
    inside a fresh bracket wrote the closer a second time. Stopping at it took
    Go from 20% to 91% right in that spot.
+
+5. **A lower floor for messages.** Inside `slog.Error("|")` the strict gate
+   showed a ghost at 1 point in 3 and cut it after a word or two. A floor of
+   0.15 for the message of a logging or error call shows one at 9 in 10 and
+   doubles the chars a user takes from it. Other code is untouched.
 
 ## Joint probability gate
 
@@ -144,6 +151,123 @@ Two details that came with it:
   the cut part is accepted. With it the next ghost is on screen right after 34
   of 81 full accepts on Go and 21 of 53 on Svelte. Without it 19 of 81 and 9 of
   52. It costs about 5 more requests per 100 chars.
+
+## Message strings
+
+A log or error message has many right wordings. In `slog.Error("|")` Mellum2
+gives `failed` 0.23, `cannot` 0.09, `error` 0.08, and all three start a fine
+message. The joint gate reads that as doubt, shows nothing, and after
+`"failed ` it stops at `to`. The uncut text was `failed to read config file`.
+
+`replay.lua --strings true` samples such lines: a call whose line names
+something that logs or reports, with a string of two or more words. Each is
+tried at three spots, with the closers an autopairs plugin leaves:
+
+- `call`: `slog.Error(|)`
+- `open`: `slog.Error("|")`
+- `mid`: `slog.Error("failed to |")`
+
+229 lines, 49 from the maintainer's repos and 180 from the held-out ones (none
+in YAML or hono). The gate now counts doubt inside the message for a share, so
+that a message alone may fall to `confidence_message` while code tokens still
+answer to `confidence`. The sum only ever goes down, so the ghost still streams
+and the cut is still final.
+
+Mellum2, same uncut text under each floor (ghost shown at / exactly the real
+text / chars saved per point / chars per ghost / chars shown past the first
+difference, per point):
+
+| floor      | call                          | open                           | mid                          |
+| ---------- | ----------------------------- | ------------------------------ | ---------------------------- |
+| off        | 80% / 92% / 5.4 / 8.0 / 1.0   | 32% / 81% / 4.7 / 17.1 / 0.8   | 52% / 88% / 4.4 / 9.0 / 0.3  |
+| 0.25       | 80% / 64% / 9.4 / 17.9 / 4.8  | 77% / 44% / 9.0 / 19.3 / 5.7   | 91% / 54% / 7.5 / 12.2 / 3.5 |
+| 0.15 (set) | 80% / 54% / 10.5 / 21.3 / 6.5 | 92% / 36% / 9.8 / 19.8 / 8.3   | 95% / 46% / 7.8 / 13.5 / 4.9 |
+| 0.1        | 80% / 48% / 10.9 / 23.3 / 7.7 | 94% / 32% / 10.1 / 21.6 / 10.0 | 96% / 44% / 7.8 / 14.3 / 5.8 |
+| 0.05       | 80% / 43% / 11.2 / 26.2 / 9.7 | 95% / 27% / 10.3 / 24.2 / 12.4 | 96% / 43% / 7.8 / 15.3 / 6.8 |
+
+Chars saved counts only text that matches the real message exactly, and it
+still doubles. Below 0.15 it stops growing while the text past the first
+difference keeps growing, so 0.15 is the default.
+
+"Exactly the real text" is the wrong yardstick for a message, so the wrong
+ones were read. Of 60 ghosts at `open` on the held-out repos that differ from
+the real text (floor 0.1), about 35 say the same in other words or start it
+sensibly: `Profiler is already running` for `Profiler is already enabled`,
+`a custom answer cannot be blank` for `must not be blank`. About 25 say
+something else. 9 of those are one demo file where every toast repeats the one
+above it, and one flips the meaning (`failed after` for `failed before`).
+
+Per suite at the default, from a live run (shown / exact / chars saved per point,
+before to after):
+
+| suite    | lines | open                                 | mid                                 |
+| -------- | ----- | ------------------------------------ | ----------------------------------- |
+| go       | 37    | 35% / 92% / 4.1 to 95% / 49% / 9.7   | 46% / 94% / 3.0 to 95% / 60% / 7.2  |
+| x-go     | 61    | 34% / 90% / 5.9 to 100% / 38% / 13.2 | 52% / 91% / 6.2 to 97% / 53% / 10.3 |
+| x-lua    | 33    | 30% / 80% / 4.8 to 79% / 42% / 6.7   | 58% / 95% / 3.4 to 85% / 68% / 6.1  |
+| x-python | 48    | 33% / 94% / 7.0 to 92% / 32% / 11.1  | 54% / 81% / 4.5 to 98% / 30% / 7.6  |
+| x-svelte | 25    | 24% / 0% / 0.0 to 88% / 14% / 2.4    | 40% / 80% / 2.2 to 96% / 25% / 4.2  |
+| x-rust   | 13    | 15% / 100% / 2.0 to 85% / 36% / 7.6  | 46% / 83% / 4.1 to 100% / 15% / 7.6 |
+
+Svelte, Astro and Lua of the maintainer have 6, 4 and 2 such lines, too few to
+read anything from.
+
+Which strings get the lower floor decides what it costs elsewhere. On the plain
+replay, same uncut text, floor 0.1 (fully right / chars shown past the first
+mistake, per point):
+
+| lower floor for                  | maintainer's, 377 points | held-out, 818 points |
+| -------------------------------- | ------------------------ | -------------------- |
+| nothing                          | 88% / 1.59               | 90% / 0.84           |
+| every string                     | 85% / 2.01               | 84% / 1.63           |
+| word tokens in every string      | 86% / 1.85               | 86% / 1.35           |
+| strings that are a call argument | 88% / 1.63               | 88% / 1.11           |
+| strings in a call that reports   | 88% / 1.61               | 89% / 1.05           |
+
+Every string lets through Tailwind class lists, URL templates and shell
+commands in YAML, where a guess is plainly wrong. Call arguments still let
+through keys and paths (`".attn.q_proj.weight"`, `"jj_core_`). The rule that
+is in: the first string of a call, on a line that names something that logs or
+reports (`trim.reports`). First string only, so the keys after a slog message
+stay strict. It costs messages that come after another string, like the last
+argument of `assert.Equal(t, "a", b, "why")`.
+
+Every point that changed on the plain replay is a message. Per suite, same
+uncut text (shown / fully right / chars saved per point):
+
+| suite    | points | message floor off | 0.15             |
+| -------- | ------ | ----------------- | ---------------- |
+| go       | 96     | 76% / 90% / 13.4  | 76% / 90% / 14.1 |
+| svelte   | 80     | 74% / 86% / 9.6   | 74% / 86% / 10.0 |
+| astro    | 79     | 78% / 87% / 10.9  | 78% / 87% / 10.9 |
+| yaml     | 66     | 68% / 89% / 7.8   | 68% / 89% / 7.8  |
+| lua      | 56     | 66% / 86% / 5.1   | 66% / 86% / 5.1  |
+| x-go     | 160    | 71% / 94% / 14.3  | 71% / 94% / 14.4 |
+| x-ts     | 56     | 61% / 74% / 5.1   | 61% / 74% / 5.1  |
+| x-svelte | 152    | 78% / 90% / 15.0  | 79% / 87% / 15.0 |
+| x-lua    | 159    | 62% / 86% / 7.7   | 62% / 85% / 7.8  |
+| x-python | 143    | 57% / 94% / 7.3   | 57% / 93% / 7.7  |
+| x-rust   | 148    | 76% / 91% / 11.1  | 76% / 91% / 11.3 |
+
+x-svelte loses 3 points to the toast file named above.
+
+Typing sim with Mellum2, 4 functions, message floor off to 0.15:
+
+| suite  | keystrokes saved | time to ghost p50 / p90 | ghost wrong from its first word |
+| ------ | ---------------- | ----------------------- | ------------------------------- |
+| go     | 74% to 75%       | 33 / 38ms to 33 / 40ms  | 7% to 9%                        |
+| svelte | 62% to 61%       | 33 / 40ms to 31 / 37ms  | 5% to 5%                        |
+| x-go   | 74% to 76%       | 29 / 37ms to 33 / 39ms  | 5% to 6%                        |
+
+No mismatches and no flickers.
+
+Sweep behaves the same on go and the held-out repos: at `open` a ghost at 29%
+of 180 lines before and 94% after, chars saved 4.2 to 8.2. Its plain replay
+goes from 81% to 80% fully right on 312 held-out points. Seed was not run.
+
+`bench/gate.lua` is what made this cheap. It applies a gate to logs of uncut
+text (`replay.lua --confidence off`), so a floor or a rule takes a second to
+try instead of a replay per try.
 
 ## Autopairs
 
@@ -294,6 +418,11 @@ instruction prompt with a cursor marker ignored the marker in 5 of 5 tries.
   the `)` matched the real line in 27 of 30 cases on Go and 19 of 23 on Svelte.
   Showing that part after the closer would save a second round.
 - A block rule by indentation, so Lua, Python and YAML get block ghosts too.
+- Messages: the call is only seen when it starts on the cursor line, and a
+  message after another string keeps the strict floor. Code inside a message
+  (`${style.name}`, `{exc}`, `%d`) gets the lower floor too and is often what
+  differs. Comments and UI text have the same many-wordings problem and are
+  not covered.
 - `defs` by treesitter or LSP symbols instead of per-language patterns.
 - Time to ghost is ~50ms p50 with sweep. 30ms of it is the suffix, which a
   prefix-first prompt redoes on every keystroke. The suffix-first models are at

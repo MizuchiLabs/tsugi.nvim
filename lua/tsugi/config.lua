@@ -22,6 +22,11 @@ local defaults = {
   ---would take it below. false shows everything.
   ---@type number|false
   confidence = 0.7,
+  ---The same floor for the message of a call that logs or reports an error,
+  ---like `slog.Error("...")` or `console.log("...")`. A message has many right
+  ---wordings, so the model is never as sure of one. false treats it like code.
+  ---@type number|false
+  confidence_message = 0.15,
   debounce = 20,
   prefetch = true,
   ---Set a key to false to leave it unmapped. With nothing to accept, the key does

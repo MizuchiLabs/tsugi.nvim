@@ -46,6 +46,82 @@ function M.until_closer(text, tail)
   return text, false
 end
 
+local reporting = {
+  "log",
+  "error",
+  "warn",
+  "info",
+  "debug",
+  "print",
+  "fatal",
+  "panic",
+  "notify",
+  "toast",
+  "throw",
+  "raise",
+  "fail",
+  "bail",
+}
+
+---Whether code names something that logs or reports an error, like
+---`slog.Error(` or `throw new Error(`.
+---@param code string
+---@return boolean
+function M.reports(code)
+  code = code:lower()
+  for _, word in ipairs(reporting) do
+    if code:find(word, 1, true) then
+      return true
+    end
+  end
+  return false
+end
+
+---Finds the message text in `text`: what is inside the first string of a call
+---that logs or reports an error. A message has many right wordings, so the
+---gate counts doubt about it for less. Judged line by line, so a call that
+---starts on an earlier line is not seen.
+---@param before string the cursor line up to the cursor
+---@param text string
+---@return table<integer, true> set of 1-based byte positions in text, the closing quote included
+function M.message(before, text)
+  local s, out = before .. text, {}
+  local quote, loose, bol = nil, false, 1
+  local stack = {}
+  local i = 1
+  while i <= #s do
+    local c = s:sub(i, i)
+    local skip = c == "\\" and 1 or 0
+    if quote and loose then
+      for at = math.max(1, i - #before), i - #before + skip do
+        out[at] = true
+      end
+    end
+    if c == "\n" then
+      quote, bol, stack = nil, i + 1, {}
+    elseif skip == 1 then
+      i = i + 1
+    elseif quote then
+      if c == quote then
+        quote = nil
+      end
+    elseif quotes[c] then
+      local call = stack[#stack]
+      quote = c
+      loose = call ~= nil and call.open == "(" and not call.string and M.reports(s:sub(bol, i - 1))
+      if call then
+        call.string = true
+      end
+    elseif openers[c] and #stack > 0 and stack[#stack].open == openers[c] then
+      stack[#stack] = nil
+    elseif c == "(" or c == "[" or c == "{" then
+      stack[#stack + 1] = { open = c }
+    end
+    i = i + 1
+  end
+  return out
+end
+
 ---How much of the text the model is sure about: the longest run of tokens from
 ---the start whose joint probability stays at or above `floor`. A later token
 ---can only lower it, so the cut is final even while streaming. Text that came
@@ -53,14 +129,16 @@ end
 ---@param tokens { at: integer, len: integer, logprob: number }[] `at` is the 1-based start in the raw output
 ---@param len integer length of the kept text
 ---@param floor number probability from 0 to 1
+---@param loose? table<integer, true> starts of tokens whose doubt counts for only `share`
+---@param share? number from 0 to 1
 ---@return integer chars
-function M.sure(tokens, len, floor)
+function M.sure(tokens, len, floor, loose, share)
   local limit, sum, chars = math.log(floor), 0, 0
   for _, t in ipairs(tokens) do
     if t.at > len then
       return len
     end
-    sum = sum + t.logprob
+    sum = sum + t.logprob * (loose and loose[t.at] and share or 1)
     if sum < limit then
       return chars
     end

@@ -58,6 +58,7 @@ lua/tsugi/
 bench/
   run.lua       hand-written cases, compares models and formats incl. next-edit
   replay.lua    quality: retypes real functions at sampled points, all repo files open
+  gate.lua      tries other confidence floors on the replay's logs, no server needed
   typing.lua    feel: drives an embedded nvim at N wpm with a simulated user
   suites.lua    which repos and languages the benches use
   RESULTS.md    current findings and open problems

@@ -15,6 +15,7 @@ local M = {}
 ---@class tsugi.Limits
 ---@field lines "block"|integer see tsugi.trim
 ---@field confidence number|false see tsugi.Config
+---@field message? number|false see tsugi.Config.confidence_message
 
 ---Starts a FIM request and reports trimmed text on the main loop. Generation is
 ---cancelled as soon as the rest would be thrown away: the stop rules ended the
@@ -30,6 +31,13 @@ function M.fim(url, model, ctx, limits, cb)
   local stop = vim.list_extend({}, req.stop)
   if ctx.lines[ctx.row]:sub(ctx.col + 1):match "%S" then
     stop[#stop + 1] = "\n"
+  end
+
+  local before = ctx.lines[ctx.row]:sub(1, ctx.col)
+  -- Message tokens count for this share, so a message alone may fall to limits.message.
+  local share ---@type number?
+  if limits.confidence and limits.message and limits.message < limits.confidence then
+    share = math.log(limits.confidence) / math.log(limits.message)
   end
 
   local t0 = vim.uv.hrtime()
@@ -67,7 +75,8 @@ function M.fim(url, model, ctx, limits, cb)
       local final = msg.stop == true
       local text, done = trim.fim(raw, ctx.lines, ctx.row, ctx.col, final, limits.lines)
       if limits.confidence then
-        local sure = trim.sure(tokens, #text, limits.confidence)
+        local loose = share and trim.message(before, raw) or nil
+        local sure = trim.sure(tokens, #text, limits.confidence, loose, share)
         if sure < #text then
           text = text:sub(1, sure):gsub("%s+$", "")
           done, info.cut = true, true

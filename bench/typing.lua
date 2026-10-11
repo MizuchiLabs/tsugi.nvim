@@ -5,6 +5,7 @@
 --
 -- nvim -l bench/typing.lua [--suite go] [--funcs 3] [--model sweep]
 --   [--context defs] [--wpm 100] [--reaction 250] [--seed 1] [--debounce 20] [--lines block|N] [--confidence 0.7|off]
+--   [--message 0.15|off]
 local lib = dofile(vim.fs.dirname(vim.fs.abspath(arg[0])) .. "/lib.lua")
 
 local opts = lib.args {
@@ -19,6 +20,7 @@ local opts = lib.args {
   prefetch = "true",
   lines = "block",
   confidence = "0.7",
+  message = "0.15",
   verbose = "false",
 }
 
@@ -27,7 +29,7 @@ local function now()
 end
 
 local child_init = [[
-local root, url, model, names, debounce, prefetch, lines, confidence = ...
+local root, url, model, names, debounce, prefetch, lines, confidence, message = ...
 vim.opt.rtp:prepend(root)
 vim.cmd("filetype off")
 vim.o.autoindent = false
@@ -35,7 +37,7 @@ vim.o.smartindent = false
 vim.o.cindent = false
 vim.o.indentexpr = ""
 vim.o.swapfile = false
-require("tsugi").setup({ url = url, model = model, context = names, debounce = debounce, prefetch = prefetch, lines = lines, confidence = confidence })
+require("tsugi").setup({ url = url, model = model, context = names, debounce = debounce, prefetch = prefetch, lines = lines, confidence = confidence, confidence_message = message })
 _G.log = {}
 local function now()
   return vim.uv.hrtime() / 1e6
@@ -90,7 +92,8 @@ lua(
   tonumber(opts.debounce),
   opts.prefetch == "true",
   tonumber(opts.lines) or opts.lines,
-  tonumber(opts.confidence) or false
+  tonumber(opts.confidence) or false,
+  tonumber(opts.message) or false
 )
 local visits = {}
 for _, f in ipairs(set.files) do
@@ -331,12 +334,13 @@ local per100 = function(x)
   return 100 * x / math.max(1, total.chars)
 end
 io.write(
-  ("\n%s model=%s context=%s lines=%s confidence=%s wpm=%s reaction=%sms\n"):format(
+  ("\n%s model=%s context=%s lines=%s confidence=%s message=%s wpm=%s reaction=%sms\n"):format(
     opts.suite,
     opts.model,
     opts.context,
     opts.lines,
     opts.confidence,
+    opts.message,
     opts.wpm,
     opts.reaction
   )

@@ -142,4 +142,53 @@ T["sure does not trust text without a probability"] = function()
   eq(3, trim.sure(tokens { "foo", 0.9 }, 8, 0.7))
 end
 
+T["sure counts doubt about loose tokens for a share"] = function()
+  local toks = tokens { "f(\"", 0.9, "no", 0.3, " file", 0.5, "\")", 0.99 }
+  eq(3, trim.sure(toks, 12, 0.7))
+  eq(12, trim.sure(toks, 12, 0.7, { [4] = true, [6] = true }, 0.1))
+end
+
+T["sure still cuts loose tokens once their share adds up"] = function()
+  local toks = tokens { "a", 0.2, " b", 0.2, " c", 0.2 }
+  eq(3, trim.sure(toks, 5, 0.7, { true, true, true, true, true }, 0.1))
+end
+
+---The part of text that trim.message marks.
+local function message(before, text)
+  local marked, out = trim.message(before, text), {}
+  for i = 1, #text do
+    out[i] = marked[i] and text:sub(i, i) or "."
+  end
+  return table.concat(out)
+end
+
+T["message is the first string of a call that reports"] = function()
+  eq(".no file\".......", message("slog.Error(", "\"no file\", \"err\""))
+end
+
+T["message goes on from a string the cursor is in"] = function()
+  eq("to open\"......", message("return fmt.Errorf(\"failed ", "to open\", err)"))
+end
+
+T["message is not a string in a call that reports nothing"] = function()
+  eq("............", message("os.Getenv(", "\"HOME PATH\")"))
+end
+
+T["message is not a key or a table field inside the call"] = function()
+  eq("...........", message("log.Println(m[", "\"some key\"]"))
+  eq("......", message("vim.notify(msg, { title = \"", "A b\" }"))
+end
+
+T["message is not a string outside of a call"] = function()
+  eq(".......", message("local warning = ", "\"oh no\""))
+end
+
+T["message keeps an escaped quote and ends at the real one"] = function()
+  eq([[.a \"b\" c".]], message("panic(", [["a \"b\" c")]]))
+end
+
+T["message does not reach into the next line"] = function()
+  eq(".no\".............", message("t.Fatal(", "\"no\")\n\tx := \"a b\""))
+end
+
 return T

@@ -76,6 +76,11 @@ require("tsugi").setup {
   -- Higher is stricter. false shows everything.
   confidence = 0.7,
 
+  -- The same floor for the message of a call that logs or reports an error,
+  -- like slog.Error("...") or console.log("..."). A message has many right
+  -- wordings, so the model is never as sure of one. false treats it like code.
+  confidence_message = 0.15,
+
   -- ms to wait after a keystroke before asking the server.
   debounce = 20,
 
@@ -110,6 +115,24 @@ there. In a real project they run longer.
 | `false`      | everything the model says                                    |
 
 `:Tsugi stats` tells you how many suggestions the gate cut short or dropped.
+
+Messages get their own floor. In `slog.Error("failed to read config")` there is
+no single right text, so the model splits its bet over many wordings and the
+strict gate stops after a word. `confidence_message` applies to the first
+string of a call whose line names something that logs or reports: log, error,
+warn, info, debug, print, fatal, panic, notify, toast, throw, raise, fail, bail.
+Keys and arguments after the message stay under `confidence`.
+
+| `confidence_message` | what you get at the opening quote                       |
+| -------------------- | ------------------------------------------------------- |
+| `0.25`               | a ghost 3 times in 4, often a few words                 |
+| `0.15`               | the default, a ghost 9 times in 10, most of the message |
+| `0.05`               | whole sentences, more of them not what you meant        |
+| `false`              | a ghost 1 time in 3, the same gate as for code          |
+
+A message ghost is a proposal. About one in three is the exact text, more than
+half of the rest say the same in other words, and the others say something
+else. Take the words you like with `<C-Right>`.
 
 ## Usage
 
@@ -168,7 +191,8 @@ ghost that was on screen before the pair appeared stays up.
    the rest would be thrown away.
 3. tsugi tracks how sure the model is as the tokens arrive. The ghost ends
    where that drops below `confidence`, and generation stops there. A wrong
-   ghost costs more than no ghost.
+   ghost costs more than no ghost. Log and error messages get a lower floor
+   (`confidence_message`), since any clear wording is a good one.
 4. The ghost appears with the first token. Keep typing and it follows along as
    long as you type what it says. Accept it all, a word, or a line.
 5. While you read the ghost, tsugi already asks for what comes after it
@@ -250,6 +274,8 @@ VIMRUNTIME=$(nvim --clean --headless +'lua io.write(vim.env.VIMRUNTIME)' +qa 2>&
 nvim -l bench/run.lua [case] [strategy]             # formats and latency, tiny hand cases
 nvim -l bench/replay.lua --suite go --model sweep   # quality on real repos, many buffers open
 nvim -l bench/replay.lua --suite go --pairs true    # same, cursor inside brackets an autopair closed
+nvim -l bench/replay.lua --suite go --strings true  # same, cursor in log and error messages
+nvim -l bench/gate.lua --logs 'bench/out/go-*'      # other floors on logged text, no server needed
 nvim -l bench/typing.lua --suite go --funcs 3       # real-time typing sim against the plugin
 ```
 

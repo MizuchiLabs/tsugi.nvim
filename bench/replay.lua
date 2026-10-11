@@ -4,18 +4,24 @@
 -- shown: points with a suggestion. ok: shown ones that are a prefix of what was
 -- really typed. line: shown ones whose first line matches exactly. wrong: shown
 -- ones that diverge. sv/pt: chars a user would accept per point (full accept
--- when ok, word-wise up to the first mistake otherwise).
+-- when ok, word-wise up to the first mistake otherwise). len: chars per ghost.
 --
 -- With --pairs true the cursor sits right after an opening bracket or quote and
 -- the closer is already in the buffer, the state an autopairs plugin leaves.
 -- The truth is then the text up to that closer.
+--
+-- With --strings true the points are message strings in calls that log or
+-- report an error, each at three spots: "call" before the opening quote, "open"
+-- right after it and "mid" a few words in. Closers sit where autopairs puts
+-- them. A message has many good wordings, so read the wrong ones before
+-- trusting the ok column.
 --
 -- The log keeps every token's length and logprob. Run with --confidence off to
 -- log the uncut text, then other floors can be tried on the log without a rerun.
 --
 -- nvim -l bench/replay.lua [--suite go,lua] [--model mellum,sweep]
 --   [--context none,defs,similar,recent,defs+recent] [--points 8] [--seed 1] [--lines block|N] [--suffix N]
---   [--confidence 0.7|off] [--pairs true]
+--   [--confidence 0.7|off] [--message 0.15|off] [--pairs true] [--strings true] [--out dir]
 local lib = dofile(vim.fs.dirname(vim.fs.abspath(arg[0])) .. "/lib.lua")
 vim.opt.rtp:prepend(lib.root)
 
@@ -23,6 +29,7 @@ local complete = require "tsugi.complete"
 local config = require "tsugi.config"
 local context = require "tsugi.context"
 local format = require "tsugi.format"
+local trim = require "tsugi.trim"
 
 local opts = lib.args {
   model = "mellum,sweep",
@@ -32,9 +39,16 @@ local opts = lib.args {
   lines = "block",
   suffix = "",
   confidence = tostring(config.confidence),
+  message = tostring(config.confidence_message),
   pairs = "false",
+  strings = "false",
+  out = lib.root .. "/bench/out",
 }
-local limits = { lines = tonumber(opts.lines) or opts.lines, confidence = tonumber(opts.confidence) or false }
+local limits = {
+  lines = tonumber(opts.lines) or opts.lines,
+  confidence = tonumber(opts.confidence) or false,
+  message = tonumber(opts.message) or false,
+}
 if opts.suffix ~= "" then
   for name in pairs(format.suffix) do
     format.suffix[name] = tonumber(opts.suffix)
@@ -108,28 +122,42 @@ local function pair_points_of(lines, fn, max)
   return spread(all, max)
 end
 
-local function word_snap(s, n)
-  while n > 0 and s:sub(n + 1, n + 1):match "[%w_]" and s:sub(n, n):match "[%w_]" do
-    n = n - 1
+---The quotes around the first string of two or more words, on a line that logs
+---or reports an error.
+local function message_of(l)
+  local s, e = l:find "([\"'`])[^\"'`]*%a+ %a+[^\"'`]*%1"
+  if not s then
+    return
   end
-  return n
+  local head = l:sub(1, s - 1)
+  if head:find("(", 1, true) and trim.reports(head) then
+    return s, e
+  end
 end
 
-local function score(truth, got)
-  if got == "" then
-    return { kind = "empty", saved = 0 }
+---Three points per message line, see the top of the file.
+local function string_points_of(lines, fn, max)
+  local rows = {}
+  for r = fn.first + 1, fn.last - 1 do
+    if message_of(lines[r]) then
+      rows[#rows + 1] = r
+    end
   end
-  local tfirst = truth:match("^[^\n]*"):gsub("%s+$", "")
-  local gfirst = got:match("^[^\n]*"):gsub("%s+$", "")
-  local line_ok = tfirst == gfirst
-  if vim.startswith(truth, got) then
-    return { kind = "ok", saved = #got, line_ok = line_ok }
+  local all = {}
+  for _, r in ipairs(spread(rows, max)) do
+    local l = lines[r]
+    local s, e = message_of(l)
+    local paren = l:sub(s - 1, s - 1) == "(" and closer_of(l, s - 1)
+    local close = l:sub(s, s) .. (paren and ")" or "")
+    all[#all + 1] =
+      { row = r, col = s - 1, tag = "call", close = paren and ")", inside = paren and l:sub(s, paren - 1) }
+    all[#all + 1] = { row = r, col = s, tag = "open", close = close, inside = l:sub(s + 1, e - 1) }
+    local mid = l:find(" ", s + math.floor((e - s) / 3), true)
+    if mid and mid < e - 2 then
+      all[#all + 1] = { row = r, col = mid, tag = "mid", close = close, inside = l:sub(mid + 1, e - 1) }
+    end
   end
-  local n = 0
-  while n < #got and got:byte(n + 1) == truth:byte(n + 1) do
-    n = n + 1
-  end
-  return { kind = "wrong", saved = word_snap(got, n), line_ok = line_ok }
+  return all
 end
 
 local function run_point(model, names, buf, path, lines, pt)
@@ -159,11 +187,27 @@ local function run_point(model, names, buf, path, lines, pt)
   return result
 end
 
-local out_dir = lib.root .. "/bench/out"
+local out_dir = vim.fs.normalize(opts.out)
 vim.fn.mkdir(out_dir, "p")
 
+local mode = opts.pairs == "true" and "pairs" or opts.strings == "true" and "strings" or nil
+local points_for = ({ pairs = pair_points_of, strings = string_points_of })[mode] or points_of
+local pick = mode == "strings"
+    and {
+      funcs = 40,
+      filter = function(fn, lines)
+        for r = fn.first + 1, fn.last - 1 do
+          if message_of(lines[r]) then
+            return true
+          end
+        end
+        return false
+      end,
+    }
+  or nil
+
 io.write(
-  ("%-7s %-7s %-12s %4s %6s %6s %6s %6s %6s %6s %6s %6s %6s\n"):format(
+  ("%-8s %-7s %-12s %4s %6s %6s %6s %6s %6s %6s %6s %6s %6s %6s\n"):format(
     "suite",
     "model",
     "context",
@@ -173,6 +217,7 @@ io.write(
     "line",
     "wrong",
     "sv/pt",
+    "len",
     "p50",
     "p90",
     "ctxms",
@@ -180,8 +225,12 @@ io.write(
   )
 )
 
+local function pct(x, of)
+  return of > 0 and ("%5.0f%%"):format(100 * x / of) or "     -"
+end
+
 for _, suite in ipairs(lib.suites(lib.list(opts.suite))) do
-  local set = lib.load(suite, tonumber(opts.seed))
+  local set = lib.load(suite, tonumber(opts.seed), pick)
   local contents, picked = set.contents, set.picked
   vim.fn.chdir(set.repo)
   context.reset()
@@ -199,8 +248,7 @@ for _, suite in ipairs(lib.suites(lib.list(opts.suite))) do
     local model = config.models[model_name]
     for _, ctx_name in ipairs(lib.list(opts.context)) do
       local names = vim.split(ctx_name, "+", { plain = true })
-      local stats = { n = 0, shown = 0, ok = 0, line = 0, wrong = 0, saved = 0, ms = {}, ctx_ms = 0, chars = 0 }
-      local pairs_mode = opts.pairs == "true"
+      local rows, order = {}, {}
       local log = assert(
         io.open(
           ("%s/%s-%s-%s-%s%s.jsonl"):format(
@@ -209,7 +257,7 @@ for _, suite in ipairs(lib.suites(lib.list(opts.suite))) do
             model_name,
             ctx_name,
             opts.lines,
-            pairs_mode and "-pairs" or ""
+            mode and "-" .. mode or ""
           ),
           "w"
         )
@@ -219,9 +267,10 @@ for _, suite in ipairs(lib.suites(lib.list(opts.suite))) do
         local lines = contents[fn.file]
         local buf = bufs[fn.file]
         vim.api.nvim_set_current_buf(buf)
-        for _, pt in ipairs((pairs_mode and pair_points_of or points_of)(lines, fn, tonumber(opts.points))) do
+        for _, pt in ipairs(points_for(lines, fn, tonumber(opts.points))) do
+          local before = lines[pt.row]:sub(1, pt.col)
           local virtual = vim.list_slice(lines, 1, pt.row - 1)
-          virtual[#virtual + 1] = lines[pt.row]:sub(1, pt.col) .. (pt.close or "")
+          virtual[#virtual + 1] = before .. (pt.close or "")
           vim.list_extend(virtual, lines, fn.last)
           vim.api.nvim_buf_set_lines(buf, 0, -1, false, virtual)
 
@@ -231,11 +280,18 @@ for _, suite in ipairs(lib.suites(lib.list(opts.suite))) do
           end
 
           local r = run_point(model, names, buf, fn.file, virtual, pt)
-          local s = score(truth, r.text)
+          local s = lib.score(truth, r.text)
           local tokens = {}
           for i, t in ipairs(r.info.tokens or {}) do
             tokens[i] = { t.len, t.logprob }
           end
+          local name = pt.tag and ctx_name .. " " .. pt.tag or ctx_name
+          if not rows[name] then
+            rows[name] =
+              { n = 0, shown = 0, ok = 0, line = 0, wrong = 0, saved = 0, len = 0, ms = {}, ctx_ms = 0, chars = 0 }
+            order[#order + 1] = name
+          end
+          local stats = rows[name]
           stats.n = stats.n + 1
           stats.ms[#stats.ms + 1] = r.ms
           stats.ctx_ms = stats.ctx_ms + r.ctx_ms
@@ -243,6 +299,7 @@ for _, suite in ipairs(lib.suites(lib.list(opts.suite))) do
           if s.kind ~= "empty" then
             stats.shown = stats.shown + 1
             stats.saved = stats.saved + s.saved
+            stats.len = stats.len + #r.text
             stats[s.kind] = stats[s.kind] + 1
             if s.line_ok then
               stats.line = stats.line + 1
@@ -253,11 +310,14 @@ for _, suite in ipairs(lib.suites(lib.list(opts.suite))) do
               file = fn.file,
               row = pt.row,
               col = pt.col,
+              tag = pt.tag,
               kind = s.kind,
               saved = s.saved,
               ms = math.floor(r.ms),
               cut = r.info.cut,
               tokens = tokens,
+              before = before,
+              after = pt.close,
               got = r.text,
               want = truth:sub(1, 300),
               error = r.info.error,
@@ -269,26 +329,27 @@ for _, suite in ipairs(lib.suites(lib.list(opts.suite))) do
       end
       log:close()
 
-      local pct = function(x, of)
-        return of > 0 and ("%5.0f%%"):format(100 * x / of) or "     -"
-      end
-      io.write(
-        ("%-7s %-7s %-12s %4d %s %s %s %s %s %6.0f %6.0f %6.1f %6.1f\n"):format(
-          suite.name,
-          model_name,
-          ctx_name,
-          stats.n,
-          pct(stats.shown, stats.n),
-          pct(stats.ok, stats.shown),
-          pct(stats.line, stats.shown),
-          pct(stats.wrong, stats.shown),
-          ("%6.1f"):format(stats.saved / math.max(1, stats.n)),
-          lib.percentile(stats.ms, 0.5),
-          lib.percentile(stats.ms, 0.9),
-          stats.ctx_ms / math.max(1, stats.n),
-          stats.chars / math.max(1, stats.n) / 1000
+      for _, name in ipairs(order) do
+        local stats = rows[name]
+        io.write(
+          ("%-8s %-7s %-12s %4d %s %s %s %s %6.1f %6.1f %6.0f %6.0f %6.1f %6.1f\n"):format(
+            suite.name,
+            model_name,
+            name,
+            stats.n,
+            pct(stats.shown, stats.n),
+            pct(stats.ok, stats.shown),
+            pct(stats.line, stats.shown),
+            pct(stats.wrong, stats.shown),
+            stats.saved / math.max(1, stats.n),
+            stats.len / math.max(1, stats.shown),
+            lib.percentile(stats.ms, 0.5),
+            lib.percentile(stats.ms, 0.9),
+            stats.ctx_ms / math.max(1, stats.n),
+            stats.chars / math.max(1, stats.n) / 1000
+          )
         )
-      )
+      end
       io.flush()
     end
   end

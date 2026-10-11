@@ -25,6 +25,34 @@ function M.percentile(xs, p)
   return sorted[math.max(1, math.ceil(#sorted * p))]
 end
 
+local function word_snap(s, n)
+  while n > 0 and s:sub(n + 1, n + 1):match "[%w_]" and s:sub(n, n):match "[%w_]" do
+    n = n - 1
+  end
+  return n
+end
+
+---Scores a ghost against what was really typed. `saved` is what a user would
+---accept: all of it when ok, word-wise up to the first mistake otherwise.
+---`bad` is how many chars were shown from that mistake on.
+---@return { kind: "empty"|"ok"|"wrong", saved: integer, bad: integer, line_ok?: boolean }
+function M.score(truth, got)
+  if got == "" then
+    return { kind = "empty", saved = 0, bad = 0 }
+  end
+  local tfirst = truth:match("^[^\n]*"):gsub("%s+$", "")
+  local gfirst = got:match("^[^\n]*"):gsub("%s+$", "")
+  local line_ok = tfirst == gfirst
+  if vim.startswith(truth, got) then
+    return { kind = "ok", saved = #got, bad = 0, line_ok = line_ok }
+  end
+  local n = 0
+  while n < #got and got:byte(n + 1) == truth:byte(n + 1) do
+    n = n + 1
+  end
+  return { kind = "wrong", saved = word_snap(got, n), bad = #got - n, line_ok = line_ok }
+end
+
 local starts = {
   "^func ",
   "^%s*local%s+function%s",
@@ -148,8 +176,10 @@ function M.suites(filter)
 end
 
 ---Deterministic per suite: files in a random visiting order and the picked
----functions, at most one per file.
-function M.load(suite, seed)
+---functions, at most one per file. `pick` takes only functions that pass its
+---filter, up to its own count.
+---@param pick? { funcs: integer, filter: fun(fn: table, lines: string[]): boolean }
+function M.load(suite, seed, pick)
   math.randomseed(seed)
   local repo, added
   if suite.url then
@@ -176,7 +206,8 @@ function M.load(suite, seed)
   shuffle(funcs)
   local picked, seen = {}, {}
   for _, fn in ipairs(funcs) do
-    if #picked < suite.funcs and not seen[fn.file] then
+    local wanted = not pick or pick.filter(fn, contents[fn.file])
+    if #picked < (pick and pick.funcs or suite.funcs) and not seen[fn.file] and wanted then
       seen[fn.file] = true
       picked[#picked + 1] = fn
     end
