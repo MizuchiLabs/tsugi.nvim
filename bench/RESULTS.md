@@ -298,6 +298,14 @@ newline. With Mellum2 the pairs and strings replays gave the same ghost at all
 almost always balanced, which the old scan handled already. Typing sim, 4
 functions: go 75% to 75% keystrokes saved, x-go 76% to 75%, no mismatches.
 
+An apostrophe is not always a quote. One inside a word (`don't`) opens no
+string, and one before a letter ends none, so the second `'` in
+`&'a str) -> &'a str` leaves the string open and the cut falls back to the
+bracket. Without these the closer after a lifetime or between two contractions
+was missed and the ghost doubled it. Again no ghost changed at the 1272 points,
+and go typing gave 74% keystrokes saved with no mismatches. A lifetime followed
+by a char literal later on the line still hides the closer.
+
 ## Suffix follows the cursor
 
 The window used to end on a grid row. Pressing Enter then pushed the last

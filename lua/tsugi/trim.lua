@@ -25,10 +25,12 @@ local function find_closer(text, closer, opener, strings)
     if c == "\\" then
       i = i + 1
     elseif quote then
-      if c == quote then
+      -- An apostrophe before a letter is no string end, like the second in `&'a str) -> &'a`.
+      if c == quote and not (c == "'" and text:sub(i + 1, i + 1):match "%w") then
         quote = nil
       end
-    elseif strings and quotes[c] then
+    -- An apostrophe inside a word, like in "don't", opens no string.
+    elseif strings and quotes[c] and not text:sub(i - 1, i + 1):match "^%w'%w$" then
       quote = c
     elseif c == closer then
       if depth == 0 then

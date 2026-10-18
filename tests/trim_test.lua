@@ -63,6 +63,17 @@ T["midline keeps going while a closer may sit in a string"] = function()
   eq(false, done)
 end
 
+T["until_closer cuts at a closer after an apostrophe in a comment"] = function()
+  local text, cut = trim.until_closer("/* don't */ x) + it's", ")")
+  eq("/* don't */ x", text)
+  eq(true, cut)
+end
+
+T["midline stops at the closer between two lifetimes"] = function()
+  local text = trim.fim("x: &'a str) -> &'a str {\n", { "fn f<'a>()" }, 1, 9, false, 8)
+  eq("x: &'a str", text)
+end
+
 T["until_closer leaves text alone when no closer follows the cursor"] = function()
   local text, cut = trim.until_closer("foo)", "")
   eq("foo)", text)
