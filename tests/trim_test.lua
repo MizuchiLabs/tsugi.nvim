@@ -69,6 +69,12 @@ T["until_closer cuts at a closer after an apostrophe in a comment"] = function()
   eq(true, cut)
 end
 
+T["until_closer keeps a prefixed string whole past a closer inside it"] = function()
+  local text, cut = trim.until_closer("f'a)b' + Rb'c)') + it's", ")")
+  eq("f'a)b' + Rb'c)'", text)
+  eq(true, cut)
+end
+
 T["midline stops at the closer between two lifetimes"] = function()
   local text = trim.fim("x: &'a str) -> &'a str {\n", { "fn f<'a>()" }, 1, 9, false, 8)
   eq("x: &'a str", text)

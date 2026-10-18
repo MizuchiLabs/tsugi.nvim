@@ -306,6 +306,12 @@ was missed and the ghost doubled it. Again no ghost changed at the 1272 points,
 and go typing gave 74% keystrokes saved with no mismatches. A lifetime followed
 by a char literal later on the line still hides the closer.
 
+A string prefix is no word, though. The rule above took the `'` in `f'`, `b'`
+or `rb'` for an apostrophe, so `f'a)b')` stopped at the `)` inside the string.
+A quote after a Python prefix opens a string again, t-strings included. No
+ghost changed at the 1272 points. The typing sim had no mismatches on go and
+x-python, but the server slowed down midway, so its numbers are left out.
+
 ## Suffix follows the cursor
 
 The window used to end on a grid row. Pressing Enter then pushed the last

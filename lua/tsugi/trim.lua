@@ -14,6 +14,14 @@ end
 
 local openers = { [")"] = "(", ["]"] = "[", ["}"] = "{" }
 local quotes = { ["\""] = true, ["'"] = true, ["`"] = true }
+local prefixes =
+  { b = true, f = true, r = true, t = true, u = true, br = true, rb = true, fr = true, rf = true, tr = true, rt = true }
+
+---An apostrophe inside a word, like in "don't", opens no string. A string prefix like f' or rb' still does.
+local function apostrophe(text, i)
+  local word = text:sub(1, i - 1):match "%w+$"
+  return word ~= nil and text:sub(i + 1, i + 1):match "%w" ~= nil and not prefixes[word:lower()]
+end
 
 ---Finds the first closer the text did not open itself.
 ---@return integer? at
@@ -29,8 +37,7 @@ local function find_closer(text, closer, opener, strings)
       if c == quote and not (c == "'" and text:sub(i + 1, i + 1):match "%w") then
         quote = nil
       end
-    -- An apostrophe inside a word, like in "don't", opens no string.
-    elseif strings and quotes[c] and not text:sub(i - 1, i + 1):match "^%w'%w$" then
+    elseif strings and quotes[c] and not (c == "'" and apostrophe(text, i)) then
       quote = c
     elseif c == closer then
       if depth == 0 then
