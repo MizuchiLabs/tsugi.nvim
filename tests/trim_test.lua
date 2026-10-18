@@ -46,6 +46,23 @@ T["midline keeps an escaped quote"] = function()
   eq([[say \"hi\" now]], text)
 end
 
+T["closer inside a string literal does not end the call"] = function()
+  local text = trim.fim("\")\")\n", { "fmt.Println()" }, 1, 12, false, 8)
+  eq("\")\"", text)
+end
+
+T["midline stops at the closer when the cursor is in a string"] = function()
+  local text, done = trim.fim("lo\")\n", { "fmt.Println(\"hel)" }, 1, 16, false, 8)
+  eq("lo\"", text)
+  eq(true, done)
+end
+
+T["midline keeps going while a closer may sit in a string"] = function()
+  local text, done = trim.fim("\")", { "fmt.Println()" }, 1, 12, false, 8)
+  eq("\"", text)
+  eq(false, done)
+end
+
 T["until_closer leaves text alone when no closer follows the cursor"] = function()
   local text, cut = trim.until_closer("foo)", "")
   eq("foo)", text)

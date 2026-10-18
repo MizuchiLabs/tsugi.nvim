@@ -15,33 +15,57 @@ end
 local openers = { [")"] = "(", ["]"] = "[", ["}"] = "{" }
 local quotes = { ["\""] = true, ["'"] = true, ["`"] = true }
 
----Cuts text before it repeats the closer that already sits after the cursor,
----like the one an autopairs plugin puts there: a bracket the text did not open
----itself, or the quote that ends the string the cursor is in.
----@param text string
----@param tail string text after the cursor
----@return string text
----@return boolean cut
-function M.until_closer(text, tail)
-  local closer = tail:match "^%s*(.)"
-  local opener = openers[closer]
-  if not opener and not quotes[closer] then
-    return text, false
-  end
-  local depth, i = 0, 1
+---Finds the first closer the text did not open itself.
+---@return integer? at
+---@return boolean open a string was left open
+local function find_closer(text, closer, opener, strings)
+  local depth, i, quote = 0, 1, nil
   while i <= #text do
     local c = text:sub(i, i)
     if c == "\\" then
       i = i + 1
+    elseif quote then
+      if c == quote then
+        quote = nil
+      end
+    elseif strings and quotes[c] then
+      quote = c
     elseif c == closer then
       if depth == 0 then
-        return text:sub(1, i - 1), true
+        return i, false
       end
       depth = depth - 1
     elseif c == opener then
       depth = depth + 1
     end
     i = i + 1
+  end
+  return nil, quote ~= nil
+end
+
+---Cuts text before it repeats the closer that already sits after the cursor,
+---like the one an autopairs plugin puts there: a bracket the text did not open
+---itself, or the quote that ends the string the cursor is in.
+---@param text string
+---@param tail string text after the cursor
+---@return string text
+---@return boolean cut true once more text can't change the cut
+function M.until_closer(text, tail)
+  local closer = tail:match "^%s*(.)"
+  local opener = openers[closer]
+  if not opener and not quotes[closer] then
+    return text, false
+  end
+  local at, open = find_closer(text, closer, opener, opener ~= nil)
+  if at then
+    return text:sub(1, at - 1), true
+  end
+  if open then
+    -- The cursor may sit in a string, then the first quote closes it. Only a later quote tells.
+    at = find_closer(text, closer, opener, false)
+    if at then
+      return text:sub(1, at - 1), false
+    end
   end
   return text, false
 end
@@ -164,10 +188,9 @@ function M.fim(raw, lines, row, col, final, limit)
 
   if not blank(rest) then
     local nl = raw:find("\n", 1, true)
-    local text = nl and raw:sub(1, nl - 1) or raw
-    local inside, closed = M.until_closer(text, rest)
+    local text, closed = M.until_closer(nl and raw:sub(1, nl - 1) or raw, rest)
     if closed then
-      return inside, true
+      return text, true
     end
     local tail = vim.trim(rest)
     if (nl or final) and #tail >= 4 and vim.endswith(text, tail) then

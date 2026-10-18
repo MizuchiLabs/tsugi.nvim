@@ -289,6 +289,15 @@ sweep:
 A ghost that was on screen before the pair appeared also survives now. It used
 to be dropped the moment the text after the cursor changed.
 
+A closer inside a string the ghost opened no longer ends it. In
+`fmt.Println(|)` the ghost `")"` used to stop at `"`. The scan now skips quoted
+spans. A string still open at the end can mean the cursor sits in one, as in
+`fmt.Println("hel|)`, so then the old cut applies and is final only at the
+newline. With Mellum2 the pairs and strings replays gave the same ghost at all
+1272 points on all 11 suites, before and after. Brackets inside real strings are
+almost always balanced, which the old scan handled already. Typing sim, 4
+functions: go 75% to 75% keystrokes saved, x-go 76% to 75%, no mismatches.
+
 ## Suffix follows the cursor
 
 The window used to end on a grid row. Pressing Enter then pushed the last
@@ -370,6 +379,11 @@ like the window start moving down. It does nothing when text is inserted
 before it. That is why the old test (insert a token before a long tail) showed
 no reuse. The flag also never reached the model processes until the router got
 a preset file. `GET /v1/models` lists the arguments of each model.
+
+Pin the image to a build. b11706 runs Mellum2 at 535 tok/s prompt and 7.6 tok/s
+decode, with all layers on the GPU. b11382 does 6950 and 233. Sweep runs at
+full speed on both, so it hits the MoE model only. Stay on b11382 until a newer
+build is measured.
 
 ## Other models tried
 
